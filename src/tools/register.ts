@@ -52,7 +52,9 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
     "canvas_list_courses",
     {
       ...ro("List my courses"),
-      description: "List the courses you are enrolled in.",
+      description:
+        "List the courses you are enrolled in — with your current/final grade, " +
+        "module progress, and teaching staff in one call.",
       inputSchema: {
         includeConcluded: z
           .boolean()
@@ -68,9 +70,9 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
     {
       ...ro("List assignments in a course"),
       description:
-        "List assignments in a course, with your submission status. " +
-        "Note: Canvas 'New Quizzes' do not appear in the quizzes endpoint but " +
-        "DO appear here as assignments.",
+        "List assignments in a course, with your submission status and — when " +
+        "Canvas allows it — class score statistics (min/max/mean/quartiles) so " +
+        "you can see how you compare. Note: New Quizzes appear here as assignments.",
       inputSchema: {
         courseId,
         bucket: z

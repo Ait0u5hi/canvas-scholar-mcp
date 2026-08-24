@@ -253,6 +253,33 @@ describe("beta/permissioned endpoints degrade gracefully", () => {
   });
 });
 
+describe("legitimate enrichments (yours-but-omitted)", () => {
+  it("assignments request class score_statistics (aggregate comparison)", async () => {
+    const c = mockClient();
+    await canvas.listAssignments(c, { courseId: 1 });
+    const [, params] = c.getPaginated.mock.calls[0];
+    expect(params.include).toEqual(
+      expect.arrayContaining(["submission", "score_statistics"]),
+    );
+  });
+
+  it("course list is enriched into a grade/progress dashboard", async () => {
+    const c = mockClient();
+    await canvas.listCourses(c);
+    const [, params] = c.getPaginated.mock.calls[0];
+    expect(params.include).toEqual(
+      expect.arrayContaining(["total_scores", "course_progress", "teachers"]),
+    );
+  });
+
+  it("modules include content_details for lock/completion state", async () => {
+    const c = mockClient();
+    await canvas.listModules(c, { courseId: 1 });
+    const [, params] = c.getPaginated.mock.calls[0];
+    expect(params.include).toEqual(expect.arrayContaining(["content_details"]));
+  });
+});
+
 describe("HTML summarization", () => {
   it("strips tags, collapses whitespace, and truncates", () => {
     expect(canvas.summarizeHtml("<p>Hello <b>world</b></p>")).toBe("Hello world");

@@ -12,25 +12,35 @@ export interface CourseArg {
   courseId: number | string;
 }
 
-/** List the courses the current user is enrolled in (active by default). */
+/**
+ * List the courses the current user is enrolled in (active by default).
+ * Enriched into a one-call dashboard: current/final scores, module progress,
+ * and the teaching staff — all your own data, just omitted from the bare list.
+ */
 export function listCourses(
   client: CanvasClient,
   args: { includeConcluded?: boolean } = {},
 ) {
   return client.getPaginated("/courses", {
     enrollment_state: args.includeConcluded ? undefined : "active",
-    include: ["term"],
+    include: ["term", "total_scores", "course_progress", "teachers"],
   });
 }
 
-/** List assignments in a course. `bucket` can narrow to e.g. "upcoming". */
+/**
+ * List assignments in a course. `bucket` can narrow to e.g. "upcoming".
+ * Includes `score_statistics` — when Canvas allows it (≥5 graded submissions and
+ * the instructor hasn't disabled it), each assignment carries the class
+ * min/max/mean/quartiles so you can see how you compare. It's aggregate-only;
+ * no other student's identity or score is ever exposed.
+ */
 export function listAssignments(
   client: CanvasClient,
   args: CourseArg & { bucket?: string },
 ) {
   return client.getPaginated(`/courses/${args.courseId}/assignments`, {
     bucket: args.bucket,
-    include: ["submission"],
+    include: ["submission", "score_statistics"],
   });
 }
 
@@ -57,7 +67,9 @@ export function getAssignment(
 ) {
   return client.get(
     `/courses/${args.courseId}/assignments/${args.assignmentId}`,
-    { include: ["submission"] },
+    // score_statistics = class min/max/mean/quartiles (aggregate-only), shown
+    // only when Canvas allows it (≥5 graded submissions, instructor-enabled).
+    { include: ["submission", "score_statistics"] },
   );
 }
 
@@ -147,10 +159,14 @@ export function getActivityStream(client: CanvasClient) {
   return client.getPaginated("/users/self/activity_stream", {});
 }
 
-/** List modules in a course, with their items. */
+/**
+ * List modules in a course, with their items and per-item completion/lock state
+ * (`content_details`): points, due dates, and whether each item is locked for
+ * you and why.
+ */
 export function listModules(client: CanvasClient, args: CourseArg) {
   return client.getPaginated(`/courses/${args.courseId}/modules`, {
-    include: ["items"],
+    include: ["items", "content_details"],
   });
 }
 

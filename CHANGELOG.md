@@ -12,6 +12,11 @@ All notable changes to this project are documented here. Format follows
 - `canvas_api_usage` — reports request count + Canvas's remaining rate-limit
   budget; the server also appends an occasional low-budget heads-up (not every
   call) and turns a throttle into a friendly "wait and retry" message.
+- **Richer, legitimately-yours data via `include[]`:** assignments now carry
+  class `score_statistics` (aggregate min/max/mean/quartiles — how you compare,
+  no per-student data, gated by Canvas's own ≥5-submissions rule); the course
+  list is enriched into a grade/progress/teacher dashboard; modules include
+  per-item lock/completion `content_details`.
 
 ### Security
 
