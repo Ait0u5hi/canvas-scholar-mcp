@@ -20,6 +20,10 @@ All notable changes to this project are documented here. Format follows
   the ones assigned to you by default (the Canvas endpoint returns everyone's).
 - `canvas_get_late_policy` — a course's late-penalty tiers, degrading to a note
   if the course restricts the endpoint to instructors.
+- `canvas_smart_search` — semantic search over course content (Canvas beta;
+  degrades to a note if not enabled for the instance).
+- `canvas_get_grading_standards` — a course's letter-grade cutoff scheme, for
+  "what do I need for an A?" (degrades to a note if restricted).
 - **5 Agent Skills** in `skills/`: `canvas-week-plan`, `canvas-student-todo`,
   `canvas-am-i-on-track`, `canvas-discussion-catchup`, `canvas-module-progress`.
 

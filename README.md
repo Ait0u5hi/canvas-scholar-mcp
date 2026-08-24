@@ -28,7 +28,7 @@ Once installed, just talk to your assistant:
 
 ## What it can do
 
-**39 read-only tools** across your whole student surface:
+**41 read-only tools** across your whole student surface:
 
 | Area | Tools |
 | --- | --- |
@@ -40,6 +40,7 @@ Once installed, just talk to your assistant:
 | **Groups** | my groups, group details, group members |
 | **Files & content** | course files, get a file, folders, pages, syllabus, modules |
 | **Rubrics & quizzes** | course rubrics, get a rubric, classic quizzes, my quiz submission |
+| **Study & grades info** | smart search (semantic course search, beta), grade-cutoff scheme |
 | **You** | my profile, class roster (degrades gracefully if the course hides it) |
 
 ## Skills (workflow shortcuts)

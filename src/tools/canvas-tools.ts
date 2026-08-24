@@ -499,7 +499,58 @@ export async function getLatePolicy(client: CanvasClient, args: CourseArg) {
   }
 }
 
+/**
+ * Semantic ("smart") search over a course's content — pages, assignments,
+ * announcements, discussions — ranked by meaning, not keywords. Great for
+ * "where did we cover skewness and kurtosis?". BETA on Canvas's side and not
+ * enabled on every instance, so we degrade gracefully if it's unavailable.
+ */
+export function smartSearch(
+  client: CanvasClient,
+  args: CourseArg & { query: string },
+) {
+  return softFail(
+    () =>
+      client.get(`/courses/${args.courseId}/smartsearch`, { q: args.query }),
+    /\b40[0134]\b/,
+    {
+      available: false,
+      note: "Smart Search (beta) is not enabled for this course/Canvas instance.",
+    },
+  );
+}
+
+/**
+ * A course's grading standard — the letter-grade cutoff scheme (A ≥ 93, etc.).
+ * May be restricted to instructors depending on the instance, so degrade to a
+ * note rather than throwing.
+ */
+export function getGradingStandards(client: CanvasClient, args: CourseArg) {
+  return softFail(
+    () => client.getPaginated(`/courses/${args.courseId}/grading_standards`, {}),
+    /\b40[134]\b/,
+    {
+      available: false,
+      note: "Grading standards are not readable with a student token for this course — check the syllabus.",
+    },
+  );
+}
+
 /* ---- helpers ---- */
+
+/** Run `fn`; if it fails with an HTTP status matching `pattern`, return `note`. */
+async function softFail<T>(
+  fn: () => Promise<T>,
+  pattern: RegExp,
+  note: object,
+): Promise<T | object> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (pattern.test((e as Error).message)) return note;
+    throw e;
+  }
+}
 
 /** Strip HTML tags and cap length so a syllabus/page body stays readable. */
 export function summarizeHtml(html: string | undefined, max = 4000): string {

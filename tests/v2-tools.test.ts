@@ -172,6 +172,32 @@ describe("late policy degrades if instructor-only", () => {
   });
 });
 
+describe("beta/permissioned endpoints degrade gracefully", () => {
+  it("smart search hits the endpoint with q, notes-out when unavailable", async () => {
+    const ok = mockClient({ get: vi.fn().mockResolvedValue({ results: [] }) });
+    await canvas.smartSearch(ok, { courseId: 1, query: "skewness" });
+    expect(ok.get).toHaveBeenCalledWith("/courses/1/smartsearch", { q: "skewness" });
+
+    const beta = mockClient({
+      get: vi.fn().mockRejectedValue(new Error("Canvas API 404 Not Found")),
+    });
+    const res = (await canvas.smartSearch(beta, { courseId: 1, query: "x" })) as {
+      available?: boolean;
+    };
+    expect(res.available).toBe(false);
+  });
+
+  it("grading standards notes-out on 403", async () => {
+    const c = mockClient({
+      getPaginated: vi.fn().mockRejectedValue(new Error("Canvas API 403 Forbidden")),
+    });
+    const res = (await canvas.getGradingStandards(c, { courseId: 1 })) as {
+      available?: boolean;
+    };
+    expect(res.available).toBe(false);
+  });
+});
+
 describe("HTML summarization", () => {
   it("strips tags, collapses whitespace, and truncates", () => {
     expect(canvas.summarizeHtml("<p>Hello <b>world</b></p>")).toBe("Hello world");

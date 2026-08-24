@@ -70,6 +70,8 @@ async function main() {
     await check("list_announcements", () => canvas.listAnnouncements(client, { courseId: cid }), n);
     await check("get_assignment_groups", () => canvas.getAssignmentGroups(client, { courseId: cid }), n);
     await check("get_late_policy (may be instructor-only)", () => canvas.getLatePolicy(client, { courseId: cid }), (r) => (r as { available?: boolean }).available === false ? "restricted → note" : "readable");
+    await check("get_grading_standards (may be restricted)", () => canvas.getGradingStandards(client, { courseId: cid }), (r) => (r as { available?: boolean }).available === false ? "restricted → note" : "readable");
+    await check("smart_search (beta, may be off)", () => canvas.smartSearch(client, { courseId: cid, query: "syllabus" }), (r) => (r as { available?: boolean }).available === false ? "not enabled → note" : "enabled");
     await check("get_syllabus", () => canvas.getSyllabus(client, { courseId: cid }), () => "ok");
     await check("list_course_files", () => canvas.listCourseFiles(client, { courseId: cid }), n);
     await check("list_course_pages", () => canvas.listCoursePages(client, { courseId: cid }), n);

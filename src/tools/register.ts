@@ -519,6 +519,34 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
   );
 
   server.registerTool(
+    "canvas_smart_search",
+    {
+      ...ro("Smart search course content"),
+      description:
+        "Semantic search over a course's pages, assignments, announcements and " +
+        "discussions — ranked by meaning, not keywords. Good for 'where did we " +
+        "cover X?'. Beta; returns a note if not enabled for the course.",
+      inputSchema: {
+        courseId,
+        query: z.string().describe("What to search for, in natural language"),
+      },
+    },
+    async (args) => ok(await canvas.smartSearch(client, args)),
+  );
+
+  server.registerTool(
+    "canvas_get_grading_standards",
+    {
+      ...ro("Get grade cutoffs"),
+      description:
+        "A course's letter-grade cutoff scheme (A ≥ 93, etc.), for 'what do I " +
+        "need for an A?'. Returns a note if restricted to instructors.",
+      inputSchema: { courseId },
+    },
+    async (args) => ok(await canvas.getGradingStandards(client, args)),
+  );
+
+  server.registerTool(
     "canvas_get_my_profile",
     {
       ...ro("Get my profile"),
