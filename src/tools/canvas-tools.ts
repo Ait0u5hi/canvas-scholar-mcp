@@ -385,14 +385,22 @@ export async function listConferences(
 
 /* ---- Content: pages, rubrics ---- */
 
-/** List a course's wiki pages. */
+/** List a course's wiki pages (a 404 means the course doesn't use Pages). */
 export function listCoursePages(
   client: CanvasClient,
   args: CourseArg & { searchTerm?: string },
 ) {
-  return client.getPaginated(`/courses/${args.courseId}/pages`, {
-    search_term: args.searchTerm,
-  });
+  return softFail(
+    () =>
+      client.getPaginated(`/courses/${args.courseId}/pages`, {
+        search_term: args.searchTerm,
+      }),
+    /\b404\b/,
+    {
+      available: false,
+      note: "This course doesn't use Canvas Pages — check Modules or Files for content.",
+    },
+  );
 }
 
 /** Get one wiki page's body (HTML, truncated). */
@@ -406,19 +414,33 @@ export async function getCoursePage(
   return { title: page.title, url: page.url, body: summarizeHtml(page.body) };
 }
 
-/** List a course's rubrics (grading criteria). */
+const RUBRIC_DENIED = {
+  available: false,
+  note: "This course restricts rubric API access to instructors. The rubric is still visible on the assignment page in Canvas.",
+};
+
+/** List a course's rubrics (many courses restrict this to instructors). */
 export function listCourseRubrics(client: CanvasClient, args: CourseArg) {
-  return client.getPaginated(`/courses/${args.courseId}/rubrics`, {});
+  return softFail(
+    () => client.getPaginated(`/courses/${args.courseId}/rubrics`, {}),
+    /\b40[13]\b/,
+    RUBRIC_DENIED,
+  );
 }
 
-/** Get one rubric, including its assessments. */
+/** Get one rubric, including its assessments (may be instructor-restricted). */
 export function getRubric(
   client: CanvasClient,
   args: CourseArg & { rubricId: number | string },
 ) {
-  return client.get(`/courses/${args.courseId}/rubrics/${args.rubricId}`, {
-    include: ["assessments"],
-  });
+  return softFail(
+    () =>
+      client.get(`/courses/${args.courseId}/rubrics/${args.rubricId}`, {
+        include: ["assessments"],
+      }),
+    /\b40[13]\b/,
+    RUBRIC_DENIED,
+  );
 }
 
 /* ---- Quizzes (classic only — New Quizzes surface via assignments) ---- */

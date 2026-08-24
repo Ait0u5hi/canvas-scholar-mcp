@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "canvas-scholar-mcp",
   "display_name": "Canvas Scholar",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "Check your Canvas assignments, grades, discussions, missing work, and planner — read-only and student-scoped.",
   "long_description": "A student-focused Canvas LMS MCP server. It reads only your own data (your courses, your grades, your submissions) over a read-only connection to your school's Canvas. Nothing is written back to Canvas, and your API token is stored in your OS keychain, never in a plaintext config file.",
   "author": {

@@ -220,6 +220,26 @@ describe("beta/permissioned endpoints degrade gracefully", () => {
     expect(res.available).toBe(false);
   });
 
+  it("rubrics degrade to a note on 403 (instructor-restricted)", async () => {
+    const c = mockClient({
+      getPaginated: vi.fn().mockRejectedValue(new Error("Canvas API 403 Forbidden")),
+    });
+    const res = (await canvas.listCourseRubrics(c, { courseId: 1 })) as {
+      available?: boolean;
+    };
+    expect(res.available).toBe(false);
+  });
+
+  it("pages degrade to a note on 404 (course doesn't use Pages)", async () => {
+    const c = mockClient({
+      getPaginated: vi.fn().mockRejectedValue(new Error("Canvas API 404 Not Found")),
+    });
+    const res = (await canvas.listCoursePages(c, { courseId: 1 })) as {
+      available?: boolean;
+    };
+    expect(res.available).toBe(false);
+  });
+
   it("grading standards returns an explicit note for an empty result (not a bare [])", async () => {
     const c = mockClient({ getPaginated: vi.fn().mockResolvedValue([]) });
     const res = (await canvas.getGradingStandards(c, { courseId: 1 })) as {

@@ -3,33 +3,15 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
-## [0.2.0] - Unreleased
+## [0.4.0] - Unreleased
 
 ### Added
 
-- **~24 new read-only student tools** (11 → 36 total): submission feedback
-  (comments + rubric), weighted grade breakdown, announcements, syllabus, course
-  files/folders/get-file, inbox (list/read/unread-count), groups (mine/detail/
-  members), calendar events, pages, rubrics, classic quizzes + my quiz
-  submission, profile, to-do, and the class roster.
-- `canvas_list_conferences` — live web conferences (BigBlueButton class
-  sessions) with join links. These do NOT appear in the calendar/planner feeds,
-  so this closes a real "plan my week misses my live class" gap; wired into the
-  `canvas-week-plan` skill.
-- `canvas_list_peer_reviews` — peer reviews for an assignment, filtered to just
-  the ones assigned to you by default (the Canvas endpoint returns everyone's).
-- `canvas_get_late_policy` — a course's late-penalty tiers, degrading to a note
-  if the course restricts the endpoint to instructors.
-- `canvas_smart_search` — semantic search over course content (Canvas beta;
-  degrades to a note if not enabled for the instance).
-- `canvas_get_grading_standards` — a course's letter-grade cutoff scheme, for
-  "what do I need for an A?" (degrades to a note if restricted).
-- **6 Agent Skills** in `skills/`: `canvas-week-plan`, `canvas-student-todo`,
-  `canvas-am-i-on-track`, `canvas-discussion-catchup`, `canvas-module-progress`,
-  `canvas-lecture-transcribe`.
-- **Companion script** `scripts/transcribe-lecture.mjs` — turns a BigBlueButton
-  lecture recording (found via `canvas_list_conferences`) into a text transcript
-  via ffmpeg + whisper. Kept out of the read-only server on purpose.
+- `canvas_list_new_quizzes` — finds New Quizzes via their assignment shells
+  (`assignments?new_quizzes=true`), resolving the long-standing New-Quizzes gap.
+- `canvas_api_usage` — reports request count + Canvas's remaining rate-limit
+  budget; the server also appends an occasional low-budget heads-up (not every
+  call) and turns a throttle into a friendly "wait and retry" message.
 
 ### Security
 
@@ -39,47 +21,51 @@ All notable changes to this project are documented here. Format follows
 - **Numeric id validation** at the input boundary prevents path-injection on
   `self`-scoped requests.
 
-### Added (later in 0.2.0)
-
-- `canvas_list_new_quizzes` — finds New Quizzes via their assignment shells
-  (`assignments?new_quizzes=true`); the stale "no quizzes tool" README note is
-  replaced with an accurate classic-vs-New explainer.
-- `canvas_api_usage` + an occasional low-budget heads-up and a friendly
-  rate-limit error, so heavy sessions don't hit Canvas's throttle blind.
-
 ### Fixed
 
-- Tool annotations are now nested under `annotations` so `readOnlyHint` (plus
-  `idempotentHint`/`openWorldHint`/`destructiveHint`) actually reach the client
-  instead of being silently dropped.
-- Unscoped `canvas_list_conferences` no longer dumps full history (caps to the 50
-  most recent); `canvas_get_grading_standards` returns an explicit note instead of
-  a bare `[]`.
+- Tool annotations nest under `annotations` so `readOnlyHint` et al. actually
+  reach the client instead of being silently dropped.
+- `canvas_list_conferences` (unscoped) caps to the 50 most recent instead of
+  dumping full history; `canvas_get_grading_standards` returns an explicit note
+  instead of a bare `[]`.
+- `canvas_list_course_rubrics` / `canvas_get_rubric` (403) and
+  `canvas_list_course_pages` (404) now degrade to an explanatory note instead of
+  throwing, matching the roster/late-policy behavior.
 
-### Notes / correctness
+## [0.3.0] - Unreleased
 
-- Reading an inbox thread forces `auto_mark_as_read=false` so the server never
-  mutates your inbox.
-- Calendar events auto-derive course contexts and chunk them (Canvas caps at 10
-  per request).
-- The roster tool degrades gracefully (returns a note, not an error) when a
-  course hides the student roster.
+### Added
+
+- `canvas_list_conferences` — live web conferences (BigBlueButton) with join
+  links; closes a real "plan my week misses my live class" gap. Wired into the
+  `canvas-week-plan` skill.
+- `canvas_list_peer_reviews` (filtered to just yours), `canvas_get_late_policy`,
+  `canvas_smart_search` (semantic search, beta), `canvas_get_grading_standards`
+  — the permission-uncertain ones degrade gracefully to a note.
+- **Companion script** `scripts/transcribe-lecture.mjs` + the
+  `canvas-lecture-transcribe` skill — turn a BigBlueButton recording into a
+  whisper transcript for study/LLM ingestion, kept out of the read-only server.
+
+## [0.2.0] - Unreleased
+
+### Added
+
+- Expanded from 11 to ~35 read-only student tools: submission feedback
+  (comments + rubric), weighted grade breakdown, announcements, syllabus, files,
+  inbox, groups, calendar, pages, rubrics, classic quizzes, profile, to-do,
+  roster.
+- **Agent Skills** in `skills/`: week-plan, student-todo, am-i-on-track,
+  discussion-catchup, module-progress.
 
 ### Changed
 
-- Dropped EOL Node 18; requires Node ≥ 20. Dev tooling upgraded (vitest 4,
+- Dropped EOL Node 18 (requires Node ≥ 20); dev tooling upgraded (vitest 4,
   eslint 10); `npm audit` clean.
 
 ## [0.1.0] - Unreleased
 
 ### Added
 
-- Initial student-focused Canvas LMS MCP server (read-only, stdio).
-- 11 tools: courses, assignments, assignment detail, grades (all + per-course),
-  discussions, threaded discussion view, missing submissions, planner items,
-  activity stream, modules.
-- Native `fetch`-based Canvas client with Link-header pagination and a non-JSON
-  response guard.
-- Privacy regression test enforcing `user_id: "self"` scoping on per-course grades.
-- `.mcpb` manifest (keychain-backed token) and `server.json` for the MCP registry.
-- GitHub Actions CI (typecheck + lint + test).
+- Initial student-focused Canvas LMS MCP server (read-only, stdio): 11 tools,
+  native-`fetch` client with pagination, a privacy regression test enforcing
+  `user_id: "self"` grade scoping, `.mcpb` manifest, and `server.json`.
