@@ -123,6 +123,14 @@ describe("endpoint correctness for new tools", () => {
     expect(params.context_codes).toEqual(["course_5"]);
   });
 
+  it("new quizzes filters the assignments endpoint with new_quizzes=true", async () => {
+    const c = mockClient();
+    await canvas.listNewQuizzes(c, { courseId: 5 });
+    const [path, params] = c.getPaginated.mock.calls[0];
+    expect(path).toBe("/courses/5/assignments");
+    expect(params).toMatchObject({ new_quizzes: true });
+  });
+
   it("my groups reads /users/self/groups", async () => {
     const c = mockClient();
     await canvas.listMyGroups(c);

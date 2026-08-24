@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CanvasClient } from "../lib/canvas-client.js";
+import { fenceUntrusted } from "../lib/untrusted.js";
 import * as canvas from "./canvas-tools.js";
 
 /**
@@ -12,9 +13,19 @@ import * as canvas from "./canvas-tools.js";
  * pessimistic assumed-destructive posture.
  */
 export function registerTools(server: McpServer, client: CanvasClient): void {
-  const ok = (data: unknown) => ({
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-  });
+  // Wrap a result as MCP text, appending an occasional low-budget notice.
+  const wrap = (text: string) => {
+    const notice = client.consumeUsageNotice();
+    return {
+      content: [
+        { type: "text" as const, text: notice ? `${text}\n\n${notice}` : text },
+      ],
+    };
+  };
+  const ok = (data: unknown) => wrap(JSON.stringify(data, null, 2));
+  // For tools returning Canvas-user-authored text: fence it against injection.
+  const okUntrusted = (data: unknown, source: string) =>
+    wrap(fenceUntrusted(JSON.stringify(data, null, 2), source));
   const ro = (title: string) => ({
     title,
     annotations: {
@@ -25,8 +36,15 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       destructiveHint: false,
     },
   });
-  const id = z.union([z.number(), z.string()]);
+  // Numeric ids only. Rejecting non-numeric strings at the validation boundary
+  // stops path-injection (e.g. a crafted "123/submissions/456?" from a prompt-
+  // injected call escaping a `self`-scoped path).
+  const id = z
+    .union([z.number().int(), z.string().regex(/^\d+$/, "must be a numeric id")])
+    .describe("Canvas numeric id");
   const courseId = id.describe("Canvas course id");
+  // Page slugs are not numeric, so they get their own schema.
+  const pageSlug = z.union([z.number(), z.string()]);
 
   /* -------------------- courses / assignments / grades -------------------- */
 
@@ -182,7 +200,7 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
         "The social/notification feed; for action items prefer planner or todo.",
       inputSchema: {},
     },
-    async () => ok(await canvas.getActivityStream(client)),
+    async () => okUntrusted(await canvas.getActivityStream(client), "activity stream"),
   );
 
   server.registerTool(
@@ -262,7 +280,7 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       description: "List discussion topics in a course (metadata only).",
       inputSchema: { courseId },
     },
-    async (args) => ok(await canvas.listDiscussions(client, args)),
+    async (args) => okUntrusted(await canvas.listDiscussions(client, args), "course discussions"),
   );
 
   server.registerTool(
@@ -273,7 +291,7 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
         "Full threaded view of a discussion topic, including reply bodies.",
       inputSchema: { courseId, topicId: id.describe("Discussion topic id") },
     },
-    async (args) => ok(await canvas.getDiscussionView(client, args)),
+    async (args) => okUntrusted(await canvas.getDiscussionView(client, args), "discussion thread"),
   );
 
   server.registerTool(
@@ -283,7 +301,7 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       description: "Recent announcements for a course.",
       inputSchema: { courseId },
     },
-    async (args) => ok(await canvas.listAnnouncements(client, args)),
+    async (args) => okUntrusted(await canvas.listAnnouncements(client, args), "announcements"),
   );
 
   /* -------------------- inbox / conversations -------------------- */
@@ -300,7 +318,7 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
           .describe("Optional filter"),
       },
     },
-    async (args) => ok(await canvas.listConversations(client, args)),
+    async (args) => okUntrusted(await canvas.listConversations(client, args), "inbox"),
   );
 
   server.registerTool(
@@ -312,7 +330,7 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
         "read-only).",
       inputSchema: { conversationId: id },
     },
-    async (args) => ok(await canvas.getConversation(client, args)),
+    async (args) => okUntrusted(await canvas.getConversation(client, args), "inbox message"),
   );
 
   server.registerTool(
@@ -426,11 +444,14 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       description: "Get one wiki page's content (HTML stripped to text).",
       inputSchema: {
         courseId,
-        pageUrl: id.describe("Page url slug or id"),
+        pageUrl: pageSlug.describe("Page url slug or id"),
       },
     },
     async (args) =>
-      ok(await canvas.getCoursePage(client, { ...args, pageUrl: String(args.pageUrl) })),
+      okUntrusted(
+        await canvas.getCoursePage(client, { ...args, pageUrl: String(args.pageUrl) }),
+        "course page",
+      ),
   );
 
   server.registerTool(
@@ -440,7 +461,7 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       description: "A course's syllabus text (HTML stripped, truncated).",
       inputSchema: { courseId },
     },
-    async (args) => ok(await canvas.getSyllabus(client, args)),
+    async (args) => okUntrusted(await canvas.getSyllabus(client, args), "syllabus"),
   );
 
   server.registerTool(
@@ -485,6 +506,20 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       inputSchema: { courseId, quizId: id },
     },
     async (args) => ok(await canvas.getQuiz(client, args)),
+  );
+
+  server.registerTool(
+    "canvas_list_new_quizzes",
+    {
+      ...ro("List New Quizzes"),
+      description:
+        "List a course's New Quizzes (the modern Quizzes.Next engine). These " +
+        "don't appear in canvas_list_quizzes; this finds them via their " +
+        "assignment shells. For due dates/points/status — reading a New Quiz's " +
+        "questions needs an instructor-gated API.",
+      inputSchema: { courseId },
+    },
+    async (args) => ok(await canvas.listNewQuizzes(client, args)),
   );
 
   server.registerTool(
@@ -554,6 +589,19 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       inputSchema: {},
     },
     async () => ok(await canvas.getMyProfile(client)),
+  );
+
+  server.registerTool(
+    "canvas_api_usage",
+    {
+      ...ro("Check Canvas API usage"),
+      description:
+        "How much Canvas API budget you've used this session — request count and " +
+        "Canvas's remaining rate-limit budget. Canvas throttles heavy bursts; " +
+        "this lets you check before running something big.",
+      inputSchema: {},
+    },
+    async () => ok(client.usage()),
   );
 
   server.registerTool(

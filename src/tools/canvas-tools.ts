@@ -34,6 +34,22 @@ export function listAssignments(
   });
 }
 
+/**
+ * List a course's "New Quizzes" (the Quizzes.Next/LTI engine).
+ *
+ * New Quizzes never appear in the classic `/quizzes` endpoint, but each one
+ * creates an assignment shell, so we filter the assignments list with Canvas's
+ * documented `new_quizzes=true` param — same student-readable endpoint, no extra
+ * scope. (Reading a New Quiz's actual questions needs Canvas's separate,
+ * developer-key-gated New Quizzes API, which a student token can't rely on.)
+ */
+export function listNewQuizzes(client: CanvasClient, args: CourseArg) {
+  return client.getPaginated(`/courses/${args.courseId}/assignments`, {
+    new_quizzes: true,
+    include: ["submission"],
+  });
+}
+
 /** Get one assignment, including the current user's submission. */
 export function getAssignment(
   client: CanvasClient,
