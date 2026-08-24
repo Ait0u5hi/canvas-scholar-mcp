@@ -1,26 +1,53 @@
 # Canvas Scholar MCP
 
+[![CI](https://github.com/Ait0u5hi/canvas-scholar-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Ait0u5hi/canvas-scholar-mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520-green.svg)](https://nodejs.org)
+
 A **student-focused** [Model Context Protocol](https://modelcontextprotocol.io) server for [Canvas LMS](https://www.instructure.com/canvas). Ask your AI assistant what's due, how you're doing, and what you've missed — it reads your Canvas directly.
 
 - **Read-only.** Every tool only reads; nothing is ever written back to Canvas.
 - **Student-scoped.** It can only see *your* data (`/users/self/…`). It cannot read a classmate's grades — enforced and regression-tested.
 - **Local & private.** Runs on your machine over stdio. Your token stays in your OS keychain (via the one-click installer) or a local env var. No data leaves your machine except calls to your own school's Canvas.
 
+## Requirements
+
+- **Node.js ≥ 20** (only for the `npx`/from-source paths; the one-click `.mcpb` bundles its own runtime)
+- A **Canvas API token** and your school's Canvas domain (see below)
+
+## Example prompts
+
+Once installed, just talk to your assistant:
+
+- *"What's due this week across all my courses?"*
+- *"Plan my week."* / *"What's on my to-do list?"*
+- *"How are my grades — am I on track?"*
+- *"What did my professor say on Assign-1?"*
+- *"Catch me up on the discussion board in ISM 6251."*
+- *"What's left in the module for my stats class?"*
+
 ## What it can do
 
-| Tool | What you get |
+**36 read-only tools** across your whole student surface:
+
+| Area | Tools |
 | --- | --- |
-| `canvas_list_courses` | Your enrolled courses |
-| `canvas_list_assignments` | Assignments in a course, with your submission status |
-| `canvas_get_assignment` | One assignment + your submission |
-| `canvas_get_grades` | Your current grade in every course |
-| `canvas_get_course_grade` | Your grade in one course |
-| `canvas_list_discussions` | Discussion topics in a course |
-| `canvas_get_discussion_view` | A full threaded discussion, including reply text |
-| `canvas_get_missing_submissions` | What you haven't turned in |
-| `canvas_get_planner_items` | Upcoming items in a date window |
-| `canvas_get_activity_stream` | Your recent Canvas activity |
-| `canvas_list_modules` | A course's modules and items |
+| **Courses & assignments** | list courses, list/get assignments, submission **feedback** (comments + rubric) |
+| **Grades** | grades (all courses), per-course grade, weighted **grade breakdown** by group |
+| **What's due** | missing submissions, planner items, to-do list, calendar events |
+| **Discussions & news** | list discussions, read a full thread, announcements |
+| **Inbox** | list conversations, read a thread (never marks it read), unread count |
+| **Groups** | my groups, group details, group members |
+| **Files & content** | course files, get a file, folders, pages, syllabus, modules |
+| **Rubrics & quizzes** | course rubrics, get a rubric, classic quizzes, my quiz submission |
+| **You** | my profile, class roster (degrades gracefully if the course hides it) |
+
+## Skills (workflow shortcuts)
+
+The repo ships [`skills/`](./skills) — Agent Skills that chain these tools into
+one-shot workflows: **week-plan**, **student-todo**, **am-i-on-track**,
+**discussion-catchup**, and **module-progress**. Copy a skill's folder into your
+client's skills directory to enable it.
 
 ## Get a Canvas API token
 
@@ -39,12 +66,14 @@ Download `canvas-scholar-mcp.mcpb` from the [latest release](https://github.com/
 
 ### Claude Desktop / Cursor / any MCP client — via npx
 
+> Available once published to npm. Until then, use the **from source** option below.
+
 Add to your client's MCP config:
 
 ```json
 {
   "mcpServers": {
-    "canvas": {
+    "canvas-scholar": {
       "command": "npx",
       "args": ["-y", "canvas-scholar-mcp"],
       "env": {
