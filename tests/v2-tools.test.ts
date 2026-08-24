@@ -76,16 +76,31 @@ describe("roster degrades gracefully when hidden", () => {
 });
 
 describe("conferences (the BigBlueButton gap)", () => {
-  it("uses the cross-course endpoint by default and honors state=live", async () => {
+  it("uses the cross-course endpoint by default (bounded) and honors state=live", async () => {
     const c = mockClient();
     await canvas.listConferences(c, { state: "live" });
-    expect(c.getPaginated).toHaveBeenCalledWith("/conferences", { state: "live" });
+    // third arg caps pages so the unscoped call can't dump full history.
+    expect(c.getPaginated).toHaveBeenCalledWith("/conferences", { state: "live" }, 5);
   });
 
-  it("uses the per-course endpoint when a courseId is given", async () => {
+  it("uses the per-course endpoint (full history) when a courseId is given", async () => {
     const c = mockClient();
     await canvas.listConferences(c, { courseId: 42 });
     expect(c.getPaginated).toHaveBeenCalledWith("/courses/42/conferences", {});
+  });
+
+  it("caps + sorts the unscoped list, returning the most recent with a note", async () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      id: i,
+      started_at: `2026-01-${String((i % 28) + 1).padStart(2, "0")}T00:00:00Z`,
+    }));
+    const c = mockClient({ getPaginated: vi.fn().mockResolvedValue(many) });
+    const res = (await canvas.listConferences(c)) as {
+      note?: string;
+      conferences?: unknown[];
+    };
+    expect(res.conferences).toHaveLength(50);
+    expect(res.note).toMatch(/most recent/);
   });
 });
 
@@ -195,6 +210,18 @@ describe("beta/permissioned endpoints degrade gracefully", () => {
       available?: boolean;
     };
     expect(res.available).toBe(false);
+  });
+
+  it("grading standards returns an explicit note for an empty result (not a bare [])", async () => {
+    const c = mockClient({ getPaginated: vi.fn().mockResolvedValue([]) });
+    const res = (await canvas.getGradingStandards(c, { courseId: 1 })) as {
+      available?: boolean;
+      standards?: unknown[];
+      note?: string;
+    };
+    expect(res.available).toBe(true);
+    expect(res.standards).toEqual([]);
+    expect(res.note).toMatch(/default grading scheme/);
   });
 });
 

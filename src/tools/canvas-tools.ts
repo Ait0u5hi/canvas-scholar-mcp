@@ -337,15 +337,34 @@ export function getCalendarEvent(
  * `/conferences` (no course) spans every enrolled course/group; `state: "live"`
  * narrows to sessions happening right now.
  */
-export function listConferences(
+export async function listConferences(
   client: CanvasClient,
   args: { courseId?: number | string; state?: "live" } = {},
 ) {
-  const path = args.courseId
-    ? `/courses/${args.courseId}/conferences`
-    : "/conferences";
-  // `state` is only honored on the current-user endpoint.
-  return client.getPaginated(path, args.courseId ? {} : { state: args.state });
+  if (args.courseId) {
+    return client.getPaginated(`/courses/${args.courseId}/conferences`, {});
+  }
+  // Cross-course: the endpoint returns EVERY historical conference (can be
+  // hundreds of KB), so bound the fetch and return the most recent by start
+  // time. Pass a courseId for one course's full history.
+  const all = (await client.getPaginated(
+    "/conferences",
+    { state: args.state },
+    5,
+  )) as Array<{ started_at?: string }>;
+  const recent = [...all].sort(
+    (a, b) =>
+      new Date(b.started_at ?? 0).getTime() -
+      new Date(a.started_at ?? 0).getTime(),
+  );
+  const LIMIT = 50;
+  if (recent.length > LIMIT) {
+    return {
+      note: `Showing the ${LIMIT} most recent conferences across all courses. Pass a courseId for one course's full list.`,
+      conferences: recent.slice(0, LIMIT),
+    };
+  }
+  return recent;
 }
 
 /* ---- Content: pages, rubrics ---- */
@@ -525,8 +544,8 @@ export function smartSearch(
  * May be restricted to instructors depending on the instance, so degrade to a
  * note rather than throwing.
  */
-export function getGradingStandards(client: CanvasClient, args: CourseArg) {
-  return softFail(
+export async function getGradingStandards(client: CanvasClient, args: CourseArg) {
+  const res = await softFail(
     () => client.getPaginated(`/courses/${args.courseId}/grading_standards`, {}),
     /\b40[134]\b/,
     {
@@ -534,6 +553,17 @@ export function getGradingStandards(client: CanvasClient, args: CourseArg) {
       note: "Grading standards are not readable with a student token for this course — check the syllabus.",
     },
   );
+  // A bare [] is ambiguous (no custom standard vs quietly denied). We only reach
+  // here on a 200, so an empty array genuinely means "no custom standard"; say so
+  // explicitly to match the available:false shape of the denied case.
+  if (Array.isArray(res) && res.length === 0) {
+    return {
+      available: true,
+      standards: [],
+      note: "This course uses Canvas's default grading scheme (no custom grading standard is configured).",
+    };
+  }
+  return res;
 }
 
 /* ---- helpers ---- */
