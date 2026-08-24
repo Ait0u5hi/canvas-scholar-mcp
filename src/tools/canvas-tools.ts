@@ -411,6 +411,27 @@ export function getMyQuizSubmission(
   );
 }
 
+/* ---- Peer reviews ---- */
+
+/**
+ * Peer reviews for an assignment. The Canvas endpoint has no "assigned to me"
+ * filter — it returns every student's peer-review assignments — so by default we
+ * fetch your own user id and keep only the ones where YOU are the reviewer
+ * (`assessor_id`). Pass `mineOnly: false` to get the full list.
+ */
+export async function listPeerReviews(
+  client: CanvasClient,
+  args: CourseArg & { assignmentId: number | string; mineOnly?: boolean },
+) {
+  const reviews = (await client.getPaginated(
+    `/courses/${args.courseId}/assignments/${args.assignmentId}/peer_reviews`,
+    { include: ["user", "submission_comments"] },
+  )) as Array<{ assessor_id?: number }>;
+  if (args.mineOnly === false) return reviews;
+  const me = (await client.get("/users/self")) as { id?: number };
+  return reviews.filter((r) => r.assessor_id === me.id);
+}
+
 /* ---- Self ---- */
 
 /** Your Canvas profile (name, avatar, primary email, etc.). */

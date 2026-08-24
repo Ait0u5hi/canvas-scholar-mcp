@@ -487,6 +487,25 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
   /* -------------------- self / roster -------------------- */
 
   server.registerTool(
+    "canvas_list_peer_reviews",
+    {
+      ...ro("List my peer reviews"),
+      description:
+        "Peer reviews for an assignment. By default returns only the ones " +
+        "assigned to YOU (you as the reviewer); pass mineOnly=false for all.",
+      inputSchema: {
+        courseId,
+        assignmentId: id,
+        mineOnly: z
+          .boolean()
+          .optional()
+          .describe("Only reviews assigned to you (default true)"),
+      },
+    },
+    async (args) => ok(await canvas.listPeerReviews(client, args)),
+  );
+
+  server.registerTool(
     "canvas_get_my_profile",
     {
       ...ro("Get my profile"),

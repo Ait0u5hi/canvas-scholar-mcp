@@ -121,6 +121,37 @@ describe("endpoint correctness for new tools", () => {
   });
 });
 
+describe("peer reviews filter to just mine by default", () => {
+  it("keeps only reviews where I am the assessor", async () => {
+    const c = mockClient({
+      get: vi.fn().mockResolvedValue({ id: 100 }),
+      getPaginated: vi
+        .fn()
+        .mockResolvedValue([{ assessor_id: 100 }, { assessor_id: 200 }, { assessor_id: 100 }]),
+    });
+    const res = (await canvas.listPeerReviews(c, {
+      courseId: 1,
+      assignmentId: 2,
+    })) as Array<{ assessor_id: number }>;
+    expect(res).toHaveLength(2);
+    expect(res.every((r) => r.assessor_id === 100)).toBe(true);
+    expect(c.get).toHaveBeenCalledWith("/users/self");
+  });
+
+  it("returns everyone when mineOnly is false (no self lookup)", async () => {
+    const c = mockClient({
+      getPaginated: vi.fn().mockResolvedValue([{ assessor_id: 1 }, { assessor_id: 2 }]),
+    });
+    const res = (await canvas.listPeerReviews(c, {
+      courseId: 1,
+      assignmentId: 2,
+      mineOnly: false,
+    })) as unknown[];
+    expect(res).toHaveLength(2);
+    expect(c.get).not.toHaveBeenCalled();
+  });
+});
+
 describe("HTML summarization", () => {
   it("strips tags, collapses whitespace, and truncates", () => {
     expect(canvas.summarizeHtml("<p>Hello <b>world</b></p>")).toBe("Hello world");

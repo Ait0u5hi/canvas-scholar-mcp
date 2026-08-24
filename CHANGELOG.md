@@ -16,6 +16,8 @@ All notable changes to this project are documented here. Format follows
   sessions) with join links. These do NOT appear in the calendar/planner feeds,
   so this closes a real "plan my week misses my live class" gap; wired into the
   `canvas-week-plan` skill.
+- `canvas_list_peer_reviews` — peer reviews for an assignment, filtered to just
+  the ones assigned to you by default (the Canvas endpoint returns everyone's).
 - **5 Agent Skills** in `skills/`: `canvas-week-plan`, `canvas-student-todo`,
   `canvas-am-i-on-track`, `canvas-discussion-catchup`, `canvas-module-progress`.
 
