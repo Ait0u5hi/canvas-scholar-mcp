@@ -52,6 +52,13 @@ async function main() {
   await check("get_planner_items (next 14d)", () => canvas.getPlannerItems(client), n);
   await check("get_activity_stream", () => canvas.getActivityStream(client), n);
 
+  await check("list_conversations", () => canvas.listConversations(client), n);
+  await check("get_unread_message_count", () => canvas.getUnreadMessageCount(client), () => "ok");
+  await check("list_my_groups", () => canvas.listMyGroups(client), n);
+  await check("list_calendar_events (next 14d)", () => canvas.listCalendarEvents(client), n);
+  await check("get_my_profile", () => canvas.getMyProfile(client), () => "ok");
+  await check("get_todo", () => canvas.getMyTodo(client), n);
+
   // Course-scoped checks against the first course, if any.
   const cid = courses[0]?.id;
   if (cid) {
@@ -59,6 +66,13 @@ async function main() {
     await check("list_assignments", () => canvas.listAssignments(client, { courseId: cid }), n);
     await check("list_modules", () => canvas.listModules(client, { courseId: cid }), n);
     await check("list_discussions", () => canvas.listDiscussions(client, { courseId: cid }), n);
+    await check("list_announcements", () => canvas.listAnnouncements(client, { courseId: cid }), n);
+    await check("get_assignment_groups", () => canvas.getAssignmentGroups(client, { courseId: cid }), n);
+    await check("get_syllabus", () => canvas.getSyllabus(client, { courseId: cid }), () => "ok");
+    await check("list_course_files", () => canvas.listCourseFiles(client, { courseId: cid }), n);
+    await check("list_course_pages", () => canvas.listCoursePages(client, { courseId: cid }), n);
+    await check("list_quizzes", () => canvas.listQuizzes(client, { courseId: cid }), n);
+    await check("list_course_people (may be restricted)", () => canvas.listCoursePeople(client, { courseId: cid }), (r) => Array.isArray(r) ? `${r.length} people` : "restricted/hidden");
     await check(
       "get_course_grade (self only)",
       async () => {
