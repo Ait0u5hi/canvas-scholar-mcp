@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.Ait0u5hi/canvas-scholar-mcp",
+  "description": "Student-focused Canvas LMS MCP server: assignments, grades, discussions, missing work, planner. Read-only.",
+  "repository": {
+    "url": "https://github.com/Ait0u5hi/canvas-scholar-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "canvas-scholar-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CANVAS_API_TOKEN",
+          "description": "Canvas personal access token",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "CANVAS_DOMAIN",
+          "description": "Canvas host, e.g. school.instructure.com",
+          "isRequired": true
+        }
+      ]
+    }
+  ]
+}

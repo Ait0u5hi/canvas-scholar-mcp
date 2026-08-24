@@ -1,0 +1,47 @@
+{
+  "manifest_version": "0.2",
+  "name": "canvas-scholar-mcp",
+  "display_name": "Canvas Scholar",
+  "version": "0.1.0",
+  "description": "Check your Canvas assignments, grades, discussions, missing work, and planner — read-only and student-scoped.",
+  "long_description": "A student-focused Canvas LMS MCP server. It reads only your own data (your courses, your grades, your submissions) over a read-only connection to your school's Canvas. Nothing is written back to Canvas, and your API token is stored in your OS keychain, never in a plaintext config file.",
+  "author": {
+    "name": "Ait0u5hi"
+  },
+  "homepage": "https://github.com/Ait0u5hi/canvas-scholar-mcp",
+  "documentation": "https://github.com/Ait0u5hi/canvas-scholar-mcp#readme",
+  "license": "MIT",
+  "keywords": ["canvas", "lms", "student", "education", "assignments", "grades"],
+  "server": {
+    "type": "node",
+    "entry_point": "build/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/build/index.js"],
+      "env": {
+        "CANVAS_API_TOKEN": "${user_config.canvas_api_token}",
+        "CANVAS_DOMAIN": "${user_config.canvas_domain}"
+      }
+    }
+  },
+  "user_config": {
+    "canvas_api_token": {
+      "type": "string",
+      "title": "Canvas API token",
+      "description": "Create at Canvas → Account → Settings → '+ New Access Token'. Set an expiration date.",
+      "sensitive": true,
+      "required": true
+    },
+    "canvas_domain": {
+      "type": "string",
+      "title": "Canvas domain",
+      "description": "Your Canvas host, e.g. school.instructure.com",
+      "required": true
+    }
+  },
+  "compatibility": {
+    "runtimes": {
+      "node": ">=18"
+    }
+  }
+}

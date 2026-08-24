@@ -1,0 +1,13 @@
+src/
+tests/
+.github/
+node_modules/.cache/
+*.map
+.env
+.env.example
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+eslint.config.js
+.gitignore
+.mcpbignore
