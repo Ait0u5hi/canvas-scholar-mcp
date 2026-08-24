@@ -1,7 +1,10 @@
+# The published entry point (build/index.js) is a self-contained bundle
+# (tsup noExternal), so the .mcpb needs no node_modules at all.
+node_modules/
 src/
 tests/
 .github/
-node_modules/.cache/
+.git/
 *.map
 .env
 .env.example
@@ -11,3 +14,8 @@ vitest.config.ts
 eslint.config.js
 .gitignore
 .mcpbignore
+package-lock.json
+CHANGELOG.md
+SECURITY.md
+server.json
+*.mcpb
