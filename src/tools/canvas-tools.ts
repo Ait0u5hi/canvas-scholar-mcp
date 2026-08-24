@@ -61,16 +61,26 @@ export function listNewQuizzes(client: CanvasClient, args: CourseArg) {
 }
 
 /** Get one assignment, including the current user's submission. */
-export function getAssignment(
+export async function getAssignment(
   client: CanvasClient,
   args: CourseArg & { assignmentId: number | string },
 ) {
-  return client.get(
+  const a = (await client.get(
     `/courses/${args.courseId}/assignments/${args.assignmentId}`,
     // score_statistics = class min/max/mean/quartiles (aggregate-only), shown
     // only when Canvas allows it (≥5 graded submissions, instructor-enabled).
     { include: ["submission", "score_statistics"] },
-  );
+  )) as Record<string, unknown>;
+  // Canvas omits the key entirely when stats aren't available; say so explicitly
+  // rather than leaving the caller guessing (matches our other note-on-absence
+  // patterns for rubrics/pages/grading standards).
+  if (a && typeof a === "object" && a.score_statistics == null) {
+    a.score_statistics_note =
+      "Class score statistics aren't available for this assignment yet — Canvas " +
+      "only provides them once at least 5 submissions are graded and the " +
+      "instructor has enabled the feature.";
+  }
+  return a;
 }
 
 /**

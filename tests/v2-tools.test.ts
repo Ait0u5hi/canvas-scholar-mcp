@@ -272,6 +272,22 @@ describe("legitimate enrichments (yours-but-omitted)", () => {
     );
   });
 
+  it("get_assignment explains when class score_statistics are absent", async () => {
+    const without = mockClient({ get: vi.fn().mockResolvedValue({ id: 1, name: "A" }) });
+    const r1 = (await canvas.getAssignment(without, { courseId: 1, assignmentId: 2 })) as {
+      score_statistics_note?: string;
+    };
+    expect(r1.score_statistics_note).toMatch(/at least 5 submissions/);
+
+    const withStats = mockClient({
+      get: vi.fn().mockResolvedValue({ id: 1, score_statistics: { mean: 88 } }),
+    });
+    const r2 = (await canvas.getAssignment(withStats, { courseId: 1, assignmentId: 2 })) as {
+      score_statistics_note?: string;
+    };
+    expect(r2.score_statistics_note).toBeUndefined();
+  });
+
   it("modules include content_details for lock/completion state", async () => {
     const c = mockClient();
     await canvas.listModules(c, { courseId: 1 });
