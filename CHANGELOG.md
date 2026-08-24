@@ -7,7 +7,7 @@ All notable changes to this project are documented here. Format follows
 
 First public release. 43 read-only, student-scoped Canvas tools, 6 agent skills,
 a companion lecture-transcribe script, prompt-injection fencing, and API-usage
-awareness — live-verified against a real Canvas (FGCU) instance. The 0.1–0.4
+awareness — live-verified against a real Canvas instance. The 0.1–0.4
 entries below are the pre-release development history.
 
 ### Added
