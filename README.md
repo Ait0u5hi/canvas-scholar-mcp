@@ -87,6 +87,29 @@ npm run build
 npm run dev      # run from source over stdio
 ```
 
+### Live smoke test against your real Canvas
+
+The fastest way to confirm everything works end-to-end without an MCP client.
+Put your credentials in a `.env` file (copy `.env.example`) — no shell exports needed:
+
+```
+CANVAS_API_TOKEN=your-token
+CANVAS_DOMAIN=school.instructure.com
+```
+
+Then:
+
+```bash
+npm run smoke
+```
+
+It exercises every tool and asserts that `canvas_get_course_grade` returns only
+your own enrollment. `.env` is gitignored — it never gets committed.
+
+> Prefer no file? The built server reads plain environment variables, so
+> `node --env-file=.env build/index.js` or exporting `CANVAS_API_TOKEN` /
+> `CANVAS_DOMAIN` also works.
+
 ## Acknowledgements
 
 Part of the Canvas + MCP ecosystem alongside projects like

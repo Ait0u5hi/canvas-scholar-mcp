@@ -13,6 +13,15 @@ import { loadConfig } from "../src/lib/config.js";
 import { CanvasClient } from "../src/lib/canvas-client.js";
 import * as canvas from "../src/tools/canvas-tools.js";
 
+// Convenience for local runs: load a .env file if one exists, so you can put
+// CANVAS_API_TOKEN / CANVAS_DOMAIN in .env instead of exporting them each time.
+// Uses Node's built-in loader (Node 20.12+); harmless if the file is absent.
+try {
+  (process as { loadEnvFile?: (p?: string) => void }).loadEnvFile?.(".env");
+} catch {
+  // no .env present — fall back to the ambient environment
+}
+
 async function main() {
   const client = new CanvasClient(loadConfig());
   const pass: string[] = [];

@@ -39,6 +39,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/index.ts",
+    "smoke": "tsx scripts/smoke.ts",
     "start": "node build/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests",
