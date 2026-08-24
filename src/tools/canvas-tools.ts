@@ -50,6 +50,11 @@ export function getAssignment(
  *
  * Uses `/users/self/enrollments` with `include[]=grades` — the classic
  * `/users/self/grades` path does not exist in the Canvas API.
+ *
+ * Canvas quirk (do not "fix"): in a course with nothing graded yet you may see
+ * `grades.final_score: 0` while `grades.current_score: null`. That is Canvas's
+ * own behavior — `current_score` ignores ungraded work, `final_score` treats it
+ * as 0 — not a bug in this tool. We pass the grades object through verbatim.
  */
 export function getGrades(client: CanvasClient) {
   return client.getPaginated("/users/self/enrollments", {
