@@ -31,11 +31,30 @@ All notable changes to this project are documented here. Format follows
   lecture recording (found via `canvas_list_conferences`) into a text transcript
   via ffmpeg + whisper. Kept out of the read-only server on purpose.
 
+### Security
+
+- **Prompt-injection defense:** Canvas-user-authored text (discussions, inbox,
+  announcements, syllabus, pages, activity) is wrapped in untrusted-content
+  provenance markers before return, with a linear-time spoofed-marker neutralizer.
+- **Numeric id validation** at the input boundary prevents path-injection on
+  `self`-scoped requests.
+
+### Added (later in 0.2.0)
+
+- `canvas_list_new_quizzes` — finds New Quizzes via their assignment shells
+  (`assignments?new_quizzes=true`); the stale "no quizzes tool" README note is
+  replaced with an accurate classic-vs-New explainer.
+- `canvas_api_usage` + an occasional low-budget heads-up and a friendly
+  rate-limit error, so heavy sessions don't hit Canvas's throttle blind.
+
 ### Fixed
 
 - Tool annotations are now nested under `annotations` so `readOnlyHint` (plus
   `idempotentHint`/`openWorldHint`/`destructiveHint`) actually reach the client
   instead of being silently dropped.
+- Unscoped `canvas_list_conferences` no longer dumps full history (caps to the 50
+  most recent); `canvas_get_grading_standards` returns an explicit note instead of
+  a bare `[]`.
 
 ### Notes / correctness
 
