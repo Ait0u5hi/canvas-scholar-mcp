@@ -24,8 +24,12 @@ All notable changes to this project are documented here. Format follows
   degrades to a note if not enabled for the instance).
 - `canvas_get_grading_standards` — a course's letter-grade cutoff scheme, for
   "what do I need for an A?" (degrades to a note if restricted).
-- **5 Agent Skills** in `skills/`: `canvas-week-plan`, `canvas-student-todo`,
-  `canvas-am-i-on-track`, `canvas-discussion-catchup`, `canvas-module-progress`.
+- **6 Agent Skills** in `skills/`: `canvas-week-plan`, `canvas-student-todo`,
+  `canvas-am-i-on-track`, `canvas-discussion-catchup`, `canvas-module-progress`,
+  `canvas-lecture-transcribe`.
+- **Companion script** `scripts/transcribe-lecture.mjs` — turns a BigBlueButton
+  lecture recording (found via `canvas_list_conferences`) into a text transcript
+  via ffmpeg + whisper. Kept out of the read-only server on purpose.
 
 ### Fixed
 

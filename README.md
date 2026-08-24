@@ -47,8 +47,29 @@ Once installed, just talk to your assistant:
 
 The repo ships [`skills/`](./skills) — Agent Skills that chain these tools into
 one-shot workflows: **week-plan**, **student-todo**, **am-i-on-track**,
-**discussion-catchup**, and **module-progress**. Copy a skill's folder into your
-client's skills directory to enable it.
+**discussion-catchup**, **module-progress**, and **lecture-transcribe**. Copy a
+skill's folder into your client's skills directory to enable it.
+
+## Lecture transcription (companion script)
+
+When a class has a recorded web conference (BigBlueButton), `canvas_list_conferences`
+gives you its playback URL. The companion script turns that into a text transcript
+you can study from or feed to an LLM — kept **separate** from the read-only server
+because it does heavy media work:
+
+```bash
+node scripts/transcribe-lecture.mjs "<recording playback URL>" --out lecture.txt
+```
+
+Requires `ffmpeg` and a whisper CLI (whisper.cpp `whisper-cli`/`main` with
+`WHISPER_MODEL`, or OpenAI `whisper`; override with `WHISPER_CMD`). If it can't
+auto-locate the media, pass it directly with `--media-url`. The
+`canvas-lecture-transcribe` skill orchestrates finding the recording and running
+this.
+
+> Recordings include your instructor's and classmates' voices. Transcribe for
+> **your own** study; don't redistribute transcripts or feed others' contributions
+> into shared/training corpora.
 
 ## Get a Canvas API token
 
