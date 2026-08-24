@@ -1,6 +1,6 @@
 {
   "name": "canvas-scholar-mcp",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "description": "A student-focused Canvas LMS MCP server: check your assignments, grades, discussions, missing work, and planner from any MCP client. Read-only, local, privacy-preserving.",
   "keywords": [
     "mcp",

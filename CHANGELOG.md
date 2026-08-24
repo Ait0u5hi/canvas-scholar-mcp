@@ -3,7 +3,12 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
-## [0.4.0] - Unreleased
+## [1.0.0] - 2026-08-24
+
+First public release. 43 read-only, student-scoped Canvas tools, 6 agent skills,
+a companion lecture-transcribe script, prompt-injection fencing, and API-usage
+awareness — live-verified against a real Canvas (FGCU) instance. The 0.1–0.4
+entries below are the pre-release development history.
 
 ### Added
 
@@ -37,7 +42,7 @@ All notable changes to this project are documented here. Format follows
   `canvas_list_course_pages` (404) now degrade to an explanatory note instead of
   throwing, matching the roster/late-policy behavior.
 
-## [0.3.0] - Unreleased
+## [0.3.0] - pre-release
 
 ### Added
 
@@ -51,7 +56,7 @@ All notable changes to this project are documented here. Format follows
   `canvas-lecture-transcribe` skill — turn a BigBlueButton recording into a
   whisper transcript for study/LLM ingestion, kept out of the read-only server.
 
-## [0.2.0] - Unreleased
+## [0.2.0] - pre-release
 
 ### Added
 
@@ -67,7 +72,7 @@ All notable changes to this project are documented here. Format follows
 - Dropped EOL Node 18 (requires Node ≥ 20); dev tooling upgraded (vitest 4,
   eslint 10); `npm audit` clean.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - pre-release
 
 ### Added
 
