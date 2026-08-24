@@ -17,7 +17,8 @@ Turn a student's Canvas data into one prioritized weekly view.
 2. Call `canvas_get_planner_items` (default window is the next ~2 weeks) for everything with a date.
 3. Call `canvas_get_missing_submissions` to catch anything already overdue.
 4. Call `canvas_get_grades` so you can flag courses that need attention.
-5. Merge and sort by due date. Group into **Overdue**, **Due this week**, **Next week**, and **Heads-up (grades)**.
+5. Call `canvas_list_conferences` for live class sessions (BigBlueButton, etc.) — these do NOT come back from the calendar or planner, so skipping this misses your own class meetings. Also check `canvas_list_calendar_events` for recurring events like Teams meetings.
+6. Merge and sort by due date. Group into **Overdue**, **Due this week**, **Live sessions / meetings**, **Next week**, and **Heads-up (grades)**.
 
 ## Output template
 
@@ -29,6 +30,9 @@ Turn a student's Canvas data into one prioritized weekly view.
 
 ### 📌 Due this week
 - <Mon–Sun>: <Course> — <Assignment> (due <date>, <points> pts)
+
+### 🎥 Live sessions / meetings
+- <Course> — <session> (<date/time>, join: <link>)
 
 ### 🔭 Next week
 - <Course> — <Assignment> (due <date>)

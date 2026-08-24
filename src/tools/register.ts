@@ -195,7 +195,9 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
         "Calendar events and assignment dates across your courses in a date " +
         "window (defaults to yesterday..+14 days). Course contexts are derived " +
         "automatically. Use planner for the unified due feed; use this for raw " +
-        "calendar events like office hours.",
+        "calendar events like office hours. NOTE: live web conferences " +
+        "(BigBlueButton class sessions) do NOT appear here — use " +
+        "canvas_list_conferences for those.",
       inputSchema: {
         startDate: z.string().optional(),
         endDate: z.string().optional(),
@@ -207,6 +209,25 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       },
     },
     async (args) => ok(await canvas.listCalendarEvents(client, args)),
+  );
+
+  server.registerTool(
+    "canvas_list_conferences",
+    {
+      ...ro("List my web conferences"),
+      description:
+        "Live/scheduled web conferences (BigBlueButton class sessions, etc.) " +
+        "with their join links — across all your courses, or one course. These " +
+        "are NOT in the calendar, so use this to catch live class sessions.",
+      inputSchema: {
+        courseId: courseId.optional().describe("Limit to one course (optional)"),
+        state: z
+          .literal("live")
+          .optional()
+          .describe("Only sessions happening right now"),
+      },
+    },
+    async (args) => ok(await canvas.listConferences(client, args)),
   );
 
   server.registerTool(

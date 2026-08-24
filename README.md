@@ -28,13 +28,13 @@ Once installed, just talk to your assistant:
 
 ## What it can do
 
-**36 read-only tools** across your whole student surface:
+**37 read-only tools** across your whole student surface:
 
 | Area | Tools |
 | --- | --- |
 | **Courses & assignments** | list courses, list/get assignments, submission **feedback** (comments + rubric) |
 | **Grades** | grades (all courses), per-course grade, weighted **grade breakdown** by group |
-| **What's due** | missing submissions, planner items, to-do list, calendar events |
+| **What's due** | missing submissions, planner items, to-do list, calendar events, **web conferences** (live class sessions) |
 | **Discussions & news** | list discussions, read a full thread, announcements |
 | **Inbox** | list conversations, read a thread (never marks it read), unread count |
 | **Groups** | my groups, group details, group members |

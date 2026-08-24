@@ -75,6 +75,20 @@ describe("roster degrades gracefully when hidden", () => {
   });
 });
 
+describe("conferences (the BigBlueButton gap)", () => {
+  it("uses the cross-course endpoint by default and honors state=live", async () => {
+    const c = mockClient();
+    await canvas.listConferences(c, { state: "live" });
+    expect(c.getPaginated).toHaveBeenCalledWith("/conferences", { state: "live" });
+  });
+
+  it("uses the per-course endpoint when a courseId is given", async () => {
+    const c = mockClient();
+    await canvas.listConferences(c, { courseId: 42 });
+    expect(c.getPaginated).toHaveBeenCalledWith("/courses/42/conferences", {});
+  });
+});
+
 describe("endpoint correctness for new tools", () => {
   it("submission feedback hits submissions/self with comments+rubric includes", async () => {
     const c = mockClient();

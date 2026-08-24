@@ -56,6 +56,7 @@ async function main() {
   await check("get_unread_message_count", () => canvas.getUnreadMessageCount(client), () => "ok");
   await check("list_my_groups", () => canvas.listMyGroups(client), n);
   await check("list_calendar_events (next 14d)", () => canvas.listCalendarEvents(client), n);
+  await check("list_conferences (BigBlueButton etc.)", () => canvas.listConferences(client), n);
   await check("get_my_profile", () => canvas.getMyProfile(client), () => "ok");
   await check("get_todo", () => canvas.getMyTodo(client), n);
 

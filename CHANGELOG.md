@@ -12,6 +12,10 @@ All notable changes to this project are documented here. Format follows
   files/folders/get-file, inbox (list/read/unread-count), groups (mine/detail/
   members), calendar events, pages, rubrics, classic quizzes + my quiz
   submission, profile, to-do, and the class roster.
+- `canvas_list_conferences` — live web conferences (BigBlueButton class
+  sessions) with join links. These do NOT appear in the calendar/planner feeds,
+  so this closes a real "plan my week misses my live class" gap; wired into the
+  `canvas-week-plan` skill.
 - **5 Agent Skills** in `skills/`: `canvas-week-plan`, `canvas-student-todo`,
   `canvas-am-i-on-track`, `canvas-discussion-catchup`, `canvas-module-progress`.
 

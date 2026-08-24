@@ -330,6 +330,24 @@ export function getCalendarEvent(
   return client.get(`/calendar_events/${args.eventId}`);
 }
 
+/**
+ * Web conferences (BigBlueButton, etc.) — live class sessions and their join
+ * links. IMPORTANT: these do NOT appear in `/calendar_events`, so a "what's on
+ * this week" view built only on the calendar tool misses live class sessions.
+ * `/conferences` (no course) spans every enrolled course/group; `state: "live"`
+ * narrows to sessions happening right now.
+ */
+export function listConferences(
+  client: CanvasClient,
+  args: { courseId?: number | string; state?: "live" } = {},
+) {
+  const path = args.courseId
+    ? `/courses/${args.courseId}/conferences`
+    : "/conferences";
+  // `state` is only honored on the current-user endpoint.
+  return client.getPaginated(path, args.courseId ? {} : { state: args.state });
+}
+
 /* ---- Content: pages, rubrics ---- */
 
 /** List a course's wiki pages. */
