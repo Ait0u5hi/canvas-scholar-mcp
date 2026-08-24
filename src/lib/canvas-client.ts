@@ -9,9 +9,21 @@ import type { CanvasConfig } from "./config.js";
  * (https://canvas.instructure.com/doc/api/). It does not adapt any other
  * project's client code.
  */
+export interface UsageInfo {
+  requestsThisSession: number;
+  /** Canvas's reported remaining rate-limit budget (bucket starts ~700). */
+  canvasQuotaRemaining: number | null;
+  status: "ok" | "getting low" | "unknown";
+}
+
 export class CanvasClient {
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
+
+  // Rate-limit / usage tracking (from Canvas response headers).
+  private requests = 0;
+  private remaining: number | null = null;
+  private lastNoticeAtRequest = -Infinity;
 
   constructor(config: CanvasConfig) {
     this.baseUrl = config.baseUrl;
@@ -19,6 +31,45 @@ export class CanvasClient {
       Authorization: `Bearer ${config.token}`,
       Accept: "application/json",
     };
+  }
+
+  /** A snapshot of API usage this session. */
+  usage(): UsageInfo {
+    return {
+      requestsThisSession: this.requests,
+      canvasQuotaRemaining: this.remaining,
+      status:
+        this.remaining == null
+          ? "unknown"
+          : this.remaining < 150
+            ? "getting low"
+            : "ok",
+    };
+  }
+
+  /**
+   * A short friendly heads-up when the Canvas budget is running low — returned
+   * at most once every ~10 requests so it's an occasional reminder, not spam.
+   * Returns null when there's nothing worth saying.
+   */
+  consumeUsageNotice(): string | null {
+    if (this.remaining != null && this.remaining < 150) {
+      if (this.requests - this.lastNoticeAtRequest >= 10) {
+        this.lastNoticeAtRequest = this.requests;
+        return (
+          `⚠️ Heads-up: your Canvas API budget is getting low ` +
+          `(~${Math.round(this.remaining)} left in this window; it refills over ~a minute). ` +
+          `Spacing out heavy requests will avoid hitting the limit.`
+        );
+      }
+    }
+    return null;
+  }
+
+  private track(res: Response): void {
+    this.requests += 1;
+    const rem = Number(res.headers.get("x-rate-limit-remaining"));
+    if (!Number.isNaN(rem)) this.remaining = rem;
   }
 
   /** GET a single resource (or the first page, un-paginated). */
@@ -57,7 +108,20 @@ export class CanvasClient {
 
   private async fetch(url: string): Promise<Response> {
     const res = await fetch(url, { headers: this.headers });
+    this.track(res);
     if (!res.ok) {
+      // Canvas signals throttling with a 403 (sometimes 429) whose body mentions
+      // the rate limit; surface that as a friendly, actionable message.
+      if (res.status === 403 || res.status === 429) {
+        const body = await res.text().catch(() => "");
+        if (res.status === 429 || /rate limit/i.test(body)) {
+          throw new Error(
+            `Canvas API rate limit hit (${res.status}). Your request budget is ` +
+              `temporarily exhausted — wait ~a minute for it to refill, then retry.`,
+          );
+        }
+        throw new Error(`Canvas API 403 Forbidden for ${redact(url)}`);
+      }
       throw new Error(
         `Canvas API ${res.status} ${res.statusText} for ${redact(url)}` +
           (res.status === 401
