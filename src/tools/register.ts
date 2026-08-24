@@ -116,6 +116,19 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
   );
 
   server.registerTool(
+    "canvas_get_late_policy",
+    {
+      ...ro("Get a course's late policy"),
+      description:
+        "A course's late-submission penalty tiers (deduction % per interval). " +
+        "If the course restricts this to instructors, returns a note so you can " +
+        "fall back to the syllabus.",
+      inputSchema: { courseId },
+    },
+    async (args) => ok(await canvas.getLatePolicy(client, args)),
+  );
+
+  server.registerTool(
     "canvas_get_assignment_groups",
     {
       ...ro("Get weighted grade breakdown"),

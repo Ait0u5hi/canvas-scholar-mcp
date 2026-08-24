@@ -152,6 +152,26 @@ describe("peer reviews filter to just mine by default", () => {
   });
 });
 
+describe("late policy degrades if instructor-only", () => {
+  it("returns the policy when readable", async () => {
+    const c = mockClient({
+      get: vi.fn().mockResolvedValue({ late_submission_deduction: 10 }),
+    });
+    await canvas.getLatePolicy(c, { courseId: 1 });
+    expect(c.get).toHaveBeenCalledWith("/courses/1/late_policy");
+  });
+
+  it("returns a note (not an error) on 403", async () => {
+    const c = mockClient({
+      get: vi.fn().mockRejectedValue(new Error("Canvas API 403 Forbidden")),
+    });
+    const res = (await canvas.getLatePolicy(c, { courseId: 1 })) as {
+      available?: boolean;
+    };
+    expect(res.available).toBe(false);
+  });
+});
+
 describe("HTML summarization", () => {
   it("strips tags, collapses whitespace, and truncates", () => {
     expect(canvas.summarizeHtml("<p>Hello <b>world</b></p>")).toBe("Hello world");

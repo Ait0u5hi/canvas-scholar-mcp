@@ -477,6 +477,28 @@ export async function listCoursePeople(client: CanvasClient, args: CourseArg) {
   }
 }
 
+/**
+ * A course's late policy (deduction percentages per interval).
+ *
+ * Canvas may restrict this to instructors (`manage_grades`), so we degrade
+ * gracefully: on a 401/403 return an explanatory note instead of throwing, so
+ * the assistant can fall back to the syllabus's stated late tiers.
+ */
+export async function getLatePolicy(client: CanvasClient, args: CourseArg) {
+  try {
+    return await client.get(`/courses/${args.courseId}/late_policy`);
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (/\b40[13]\b/.test(msg)) {
+      return {
+        available: false,
+        note: "This course's late policy is not readable with a student token — check the syllabus for late-penalty tiers.",
+      };
+    }
+    throw e;
+  }
+}
+
 /* ---- helpers ---- */
 
 /** Strip HTML tags and cap length so a syllabus/page body stays readable. */

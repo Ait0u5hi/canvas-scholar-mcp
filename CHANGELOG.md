@@ -18,6 +18,8 @@ All notable changes to this project are documented here. Format follows
   `canvas-week-plan` skill.
 - `canvas_list_peer_reviews` — peer reviews for an assignment, filtered to just
   the ones assigned to you by default (the Canvas endpoint returns everyone's).
+- `canvas_get_late_policy` — a course's late-penalty tiers, degrading to a note
+  if the course restricts the endpoint to instructors.
 - **5 Agent Skills** in `skills/`: `canvas-week-plan`, `canvas-student-todo`,
   `canvas-am-i-on-track`, `canvas-discussion-catchup`, `canvas-module-progress`.
 

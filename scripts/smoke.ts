@@ -69,6 +69,7 @@ async function main() {
     await check("list_discussions", () => canvas.listDiscussions(client, { courseId: cid }), n);
     await check("list_announcements", () => canvas.listAnnouncements(client, { courseId: cid }), n);
     await check("get_assignment_groups", () => canvas.getAssignmentGroups(client, { courseId: cid }), n);
+    await check("get_late_policy (may be instructor-only)", () => canvas.getLatePolicy(client, { courseId: cid }), (r) => (r as { available?: boolean }).available === false ? "restricted → note" : "readable");
     await check("get_syllabus", () => canvas.getSyllabus(client, { courseId: cid }), () => "ok");
     await check("list_course_files", () => canvas.listCourseFiles(client, { courseId: cid }), n);
     await check("list_course_pages", () => canvas.listCoursePages(client, { courseId: cid }), n);
