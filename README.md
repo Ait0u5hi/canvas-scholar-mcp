@@ -118,6 +118,59 @@ npm ci && npm run build
 # point your client at:  node /absolute/path/to/build/index.js
 ```
 
+## Remote / LAN (HTTP) mode
+
+By default the server runs over **stdio** — each client spawns its own copy
+locally. If you'd rather run **one always-on instance** and point several MCP
+clients on your network at it, set `MCP_TRANSPORT=http`:
+
+```bash
+export MCP_TRANSPORT=http
+export MCP_HTTP_HOST=0.0.0.0            # 0.0.0.0 = reachable on your LAN; 127.0.0.1 = local only (default)
+export MCP_HTTP_PORT=7356               # default 7356
+export MCP_AUTH_TOKEN="$(openssl rand -hex 32)"   # clients must present this as a Bearer token
+export CANVAS_API_TOKEN=...             # your Canvas token (as usual)
+export CANVAS_DOMAIN=school.instructure.com
+npm run start:http                      # = MCP_TRANSPORT=http node build/index.js
+# -> canvas-scholar-mcp: HTTP transport listening on http://0.0.0.0:7356/mcp
+```
+
+Point a client at it (note `MCP_AUTH_TOKEN` is the **server-access** token — it
+is *not* your Canvas token):
+
+```bash
+# Claude Code
+claude mcp add --transport http canvas http://<host>:7356/mcp \
+  --header "Authorization: Bearer <MCP_AUTH_TOKEN>"
+```
+
+```jsonc
+// Claude Desktop has no first-class custom-header remote server, so bridge it:
+{
+  "mcpServers": {
+    "canvas": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://<host>:7356/mcp",
+               "--header", "Authorization: Bearer <MCP_AUTH_TOKEN>"]
+    }
+  }
+}
+```
+
+> **⚠️ This widens the threat model.** Over stdio the server only talks to the
+> local client that launched it. Over HTTP it is a network service that can read
+> *your* Canvas data, so:
+>
+> - **Always set `MCP_AUTH_TOKEN`** (the server refuses to start in HTTP mode
+>   without one). Requests without a valid `Authorization: Bearer` get `401`.
+> - **This is API-key auth, not the full MCP OAuth 2.1 flow** — a deliberate,
+>   proportionate choice for a single-user LAN box. Do not expose it to the open
+>   internet as-is.
+> - **Prefer TLS.** The transport is plain HTTP; on anything but a trusted LAN,
+>   put it behind a reverse proxy that terminates TLS (e.g. Caddy) and use
+>   `https://` URLs.
+> - Bind to `127.0.0.1` unless you actually want LAN reach.
+
 ## Classic Quizzes vs. New Quizzes
 
 Canvas has two quiz engines and this server handles both:
