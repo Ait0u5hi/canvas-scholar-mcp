@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { CanvasClient } from "../src/lib/canvas-client.js";
+import { CanvasApiError, type CanvasClient } from "../src/lib/canvas-client.js";
 import * as canvas from "../src/tools/canvas-tools.js";
 
 function mockClient(
@@ -133,20 +133,28 @@ describe("calendar write permission hint", () => {
   it("adds the hint on a genuine course-context permission denial", async () => {
     const c = mockClient({
       getPaginated: vi.fn().mockResolvedValue([{ id: 5 }]),
-      post: vi.fn().mockRejectedValue(new Error("Canvas API 403 Forbidden for ...")),
+      post: vi
+        .fn()
+        .mockRejectedValue(
+          new CanvasApiError("Canvas API 403 Forbidden for ...", 403, "forbidden"),
+        ),
     });
     await expect(
       canvas.createCalendarEvent(c, { contextCode: "course_5", title: "x" }),
     ).rejects.toThrow(/students typically lack calendar-write permission/);
   });
 
-  it("does NOT add the hint on a rate-limit 403 (same literal substring '403')", async () => {
+  it("does NOT add the hint on a rate-limit 403 (same status, different kind)", async () => {
     const c = mockClient({
       getPaginated: vi.fn().mockResolvedValue([{ id: 5 }]),
       post: vi
         .fn()
         .mockRejectedValue(
-          new Error("Canvas API rate limit hit (403). Your request budget is temporarily exhausted"),
+          new CanvasApiError(
+            "Canvas API rate limit hit (403). Your request budget is temporarily exhausted",
+            403,
+            "rate_limit",
+          ),
         ),
     });
     await expect(
@@ -157,7 +165,11 @@ describe("calendar write permission hint", () => {
   it("does NOT add the hint on a user-context write (only course/group qualify)", async () => {
     const c = mockClient({
       get: vi.fn().mockResolvedValue({ id: 42 }),
-      post: vi.fn().mockRejectedValue(new Error("Canvas API 403 Forbidden for ...")),
+      post: vi
+        .fn()
+        .mockRejectedValue(
+          new CanvasApiError("Canvas API 403 Forbidden for ...", 403, "forbidden"),
+        ),
     });
     await expect(
       canvas.createCalendarEvent(c, { contextCode: "user_42", title: "x" }),
@@ -167,7 +179,11 @@ describe("calendar write permission hint", () => {
   it("updateCalendarEvent gets the same hint when a contextCode is passed", async () => {
     const c = mockClient({
       getPaginated: vi.fn().mockResolvedValue([{ id: 5 }]),
-      put: vi.fn().mockRejectedValue(new Error("Canvas API 403 Forbidden for ...")),
+      put: vi
+        .fn()
+        .mockRejectedValue(
+          new CanvasApiError("Canvas API 403 Forbidden for ...", 403, "forbidden"),
+        ),
     });
     await expect(
       canvas.updateCalendarEvent(c, { eventId: 1, contextCode: "course_5", title: "x" }),

@@ -3,6 +3,40 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [1.2.1] - 2026-09-13
+
+Retrospective-driven infra/correctness pass: a session cross-model review flagged
+regex-based error classification as fragile (it had already caused one confirmed
+false-positive risk), plus the operational gaps of hand-typed deploys and no rollback.
+
+### Fixed
+
+- Replaced every error-message regex used to classify a failed Canvas API call
+  (`softFail`'s pattern matching, the calendar-write permission hint, the file/roster/
+  late-policy/rubric/quiz/grading-standards degrade-on-403-or-404 tools) with a
+  structured `CanvasApiError` (`.status`, `.kind: "rate_limit" | "forbidden" |
+  "unauthorized" | "other"`) thrown by `CanvasClient` itself. This closes several
+  latent instances of the same bug class the 1.2.0 permission-hint fix patched once:
+  a 403 rate-limit throw and a 403 permission-denied throw share the same status and
+  both contained the substring "403", so a message-regex check could misclassify a
+  throttled request as a permissions issue. Checking `.kind` makes the two
+  structurally distinguishable instead of relying on careful regex anchoring.
+- Added a measured (not just qualitative) test asserting `listAssignments`'
+  per-row size stays bounded on a deliberately worst-case fixture (a 5-criterion,
+  4-rating-per-criterion rubric on every assignment), rather than only asserting
+  individual fields got shorter.
+
+### Added
+
+- `scripts/deploy.sh` / `scripts/rollback.sh` — parameterized (git ref, systemd
+  service name via env vars, no hardcoded host/service assumptions), recording the
+  pre-deploy commit automatically so a rollback needs no separate bookkeeping.
+- An optional `MCP_REGISTRY_SYNC_CMD` hook in `deploy.sh`: if you register this
+  server in an MCP registry/gateway, point this at whatever syncs *your* registry;
+  `deploy.sh` has no built-in registry integration of its own.
+  `scripts/examples/sync-mlflow-registry.py` is a reference implementation against
+  MLflow's MCP Server Registry specifically — one example, not a default.
+
 ## [1.2.0] - 2026-09-13
 
 A live-verified field report caught a real gap in 1.1.0's own bloat fix, plus a genuine

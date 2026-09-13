@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { CanvasClient } from "../src/lib/canvas-client.js";
+import { CanvasApiError, type CanvasClient } from "../src/lib/canvas-client.js";
 import * as canvas from "../src/tools/canvas-tools.js";
 
 function mockClient(overrides: Partial<Record<"get" | "getPaginated", unknown>> = {}) {
@@ -59,7 +59,9 @@ describe("calendar context_codes derivation + chunking", () => {
 describe("roster degrades gracefully when hidden", () => {
   it("returns a restricted note (not an error) on 403", async () => {
     const c = mockClient({
-      getPaginated: vi.fn().mockRejectedValue(new Error("Canvas API 403 Forbidden")),
+      getPaginated: vi
+        .fn()
+        .mockRejectedValue(new CanvasApiError("Canvas API 403 Forbidden", 403, "forbidden")),
     });
     const res = (await canvas.listCoursePeople(c, { courseId: 1 })) as {
       restricted?: boolean;
@@ -69,7 +71,9 @@ describe("roster degrades gracefully when hidden", () => {
 
   it("rethrows non-403 errors", async () => {
     const c = mockClient({
-      getPaginated: vi.fn().mockRejectedValue(new Error("Canvas API 500 Server Error")),
+      getPaginated: vi
+        .fn()
+        .mockRejectedValue(new CanvasApiError("Canvas API 500 Server Error", 500, "other")),
     });
     await expect(canvas.listCoursePeople(c, { courseId: 1 })).rejects.toThrow(/500/);
   });
@@ -186,7 +190,7 @@ describe("late policy degrades if instructor-only", () => {
 
   it("returns a note (not an error) on 403", async () => {
     const c = mockClient({
-      get: vi.fn().mockRejectedValue(new Error("Canvas API 403 Forbidden")),
+      get: vi.fn().mockRejectedValue(new CanvasApiError("Canvas API 403 Forbidden", 403, "forbidden")),
     });
     const res = (await canvas.getLatePolicy(c, { courseId: 1 })) as {
       available?: boolean;
@@ -202,7 +206,7 @@ describe("beta/permissioned endpoints degrade gracefully", () => {
     expect(ok.get).toHaveBeenCalledWith("/courses/1/smartsearch", { q: "skewness" });
 
     const beta = mockClient({
-      get: vi.fn().mockRejectedValue(new Error("Canvas API 404 Not Found")),
+      get: vi.fn().mockRejectedValue(new CanvasApiError("Canvas API 404 Not Found", 404, "other")),
     });
     const res = (await canvas.smartSearch(beta, { courseId: 1, query: "x" })) as {
       available?: boolean;
@@ -212,7 +216,9 @@ describe("beta/permissioned endpoints degrade gracefully", () => {
 
   it("grading standards notes-out on 403", async () => {
     const c = mockClient({
-      getPaginated: vi.fn().mockRejectedValue(new Error("Canvas API 403 Forbidden")),
+      getPaginated: vi
+        .fn()
+        .mockRejectedValue(new CanvasApiError("Canvas API 403 Forbidden", 403, "forbidden")),
     });
     const res = (await canvas.getGradingStandards(c, { courseId: 1 })) as {
       available?: boolean;
@@ -222,7 +228,9 @@ describe("beta/permissioned endpoints degrade gracefully", () => {
 
   it("rubrics degrade to a note on 403 (instructor-restricted)", async () => {
     const c = mockClient({
-      getPaginated: vi.fn().mockRejectedValue(new Error("Canvas API 403 Forbidden")),
+      getPaginated: vi
+        .fn()
+        .mockRejectedValue(new CanvasApiError("Canvas API 403 Forbidden", 403, "forbidden")),
     });
     const res = (await canvas.listCourseRubrics(c, { courseId: 1 })) as {
       available?: boolean;
@@ -232,7 +240,9 @@ describe("beta/permissioned endpoints degrade gracefully", () => {
 
   it("pages degrade to a note on 404 (course doesn't use Pages)", async () => {
     const c = mockClient({
-      getPaginated: vi.fn().mockRejectedValue(new Error("Canvas API 404 Not Found")),
+      getPaginated: vi
+        .fn()
+        .mockRejectedValue(new CanvasApiError("Canvas API 404 Not Found", 404, "other")),
     });
     const res = (await canvas.listCoursePages(c, { courseId: 1 })) as {
       available?: boolean;

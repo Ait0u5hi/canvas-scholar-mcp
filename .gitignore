@@ -5,3 +5,5 @@ build/
 .DS_Store
 coverage/
 *.log
+.last-deployed-sha
+__pycache__/

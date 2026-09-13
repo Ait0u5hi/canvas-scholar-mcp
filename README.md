@@ -176,6 +176,40 @@ claude mcp add --transport http canvas http://<host>:7356/mcp \
 >   `https://` URLs.
 > - Bind to `127.0.0.1` unless you actually want LAN reach.
 
+## Deploying an always-on instance (systemd)
+
+If you're running the HTTP-transport server as a long-lived service (systemd,
+a container, whatever), `scripts/deploy.sh`/`scripts/rollback.sh` handle
+pull-build-restart-verify without any host-specific assumptions baked in —
+they take the git ref and service name as env vars, not hardcoded values:
+
+```bash
+# On the host the server actually runs on, from the repo's working directory:
+DEPLOY_REF=main DEPLOY_SERVICE=canvas-scholar-mcp scripts/deploy.sh
+
+# Something went wrong? Roll back to what was running before that deploy:
+DEPLOY_SERVICE=canvas-scholar-mcp scripts/rollback.sh
+```
+
+`deploy.sh` records the pre-deploy commit itself (`.last-deployed-sha`,
+gitignored) so `rollback.sh` doesn't need any separate state tracking. It
+also proactively widens the git remote's fetch refspec every run — a repo
+cloned with `--single-branch` (or any other narrowed-refspec setup) will
+otherwise silently fail to `git fetch` any ref but the one it started on,
+which is a real, easy-to-hit trap for a long-lived deploy checkout.
+
+**Registry sync is an optional hook, not a built-in integration.** If you
+register this server in an MCP registry/gateway (MLflow's MCP Server
+Registry, the official `registry.modelcontextprotocol.io`, or anything
+else), point `MCP_REGISTRY_SYNC_CMD` at whatever script talks to *your*
+registry — `deploy.sh` runs it after a successful restart with the new
+version/commit in its environment, and doesn't care what's on the other end
+of that command, including whether anything is. See
+[`scripts/examples/sync-mlflow-registry.py`](./scripts/examples/sync-mlflow-registry.py)
+for a reference implementation against MLflow's registry specifically (a
+metadata catalog, not a proxy — clients still connect to the real server URL
+either way; this just keeps the catalog record from going stale).
+
 ## Classic Quizzes vs. New Quizzes
 
 Canvas has two quiz engines and this server handles both:
@@ -196,9 +230,9 @@ Canvas throttles heavy bursts of API calls. This server tracks your usage and wi
 
 ## Privacy & security
 
-- The server never writes to Canvas and never logs your token or personal data.
+- The server never logs your token or personal data. The only writes it ever makes are the four confirmation-gated tools listed above (your own calendar, your own to-do list) — see [`SECURITY.md`](./SECURITY.md) for exactly what and how.
 - Use a token with an expiration date and the narrowest scope your institution allows.
-- Because it only ever reads your own account, it needs no anonymization machinery — the trust boundary is "your token, your data." See [`SECURITY.md`](./SECURITY.md).
+- Because it only ever reads/writes your own account, it needs no anonymization machinery — the trust boundary is "your token, your data."
 
 ## Development
 
