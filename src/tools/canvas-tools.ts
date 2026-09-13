@@ -33,15 +33,35 @@ export function listCourses(
  * the instructor hasn't disabled it), each assignment carries the class
  * min/max/mean/quartiles so you can see how you compare. It's aggregate-only;
  * no other student's identity or score is ever exposed.
+ *
+ * Trims per-assignment bloat that has nothing to do with the tool's purpose:
+ * Canvas always includes `secure_params` (an LTI-launch JWT — irrelevant to a
+ * read tool) on every assignment, and rich-text `description` HTML can be
+ * large. A course-scoped list is naturally bounded by how many assignments
+ * the course has, so — unlike listConferences' cross-course, unbounded
+ * history — a ROW-count cap here would risk silently hiding a real
+ * assignment; trimming per-row bloat is the safe lever, not truncating the
+ * list itself.
  */
-export function listAssignments(
+export async function listAssignments(
   client: CanvasClient,
   args: CourseArg & { bucket?: string },
 ) {
-  return client.getPaginated(`/courses/${args.courseId}/assignments`, {
-    bucket: args.bucket,
-    include: ["submission", "score_statistics"],
-  });
+  const assignments = (await client.getPaginated(
+    `/courses/${args.courseId}/assignments`,
+    { bucket: args.bucket, include: ["submission", "score_statistics"] },
+  )) as Array<Record<string, unknown>>;
+  return assignments.map(trimAssignmentBloat);
+}
+
+/** Drop/shrink fields that are pure bloat for a read-only assistant tool. */
+function trimAssignmentBloat(a: Record<string, unknown>): Record<string, unknown> {
+  const trimmed: Record<string, unknown> = { ...a };
+  delete trimmed.secure_params;
+  if (typeof trimmed.description === "string") {
+    trimmed.description = summarizeHtml(trimmed.description, 1000);
+  }
+  return trimmed;
 }
 
 /**
@@ -118,13 +138,24 @@ export function getCourseGrade(client: CanvasClient, args: CourseArg) {
 
 /**
  * List discussion topics in a course (metadata only; use getDiscussionView for
- * replies). Canvas's raw topic objects pass through unmodified, so a topic
- * split per-group already carries `group_category_id`/`group_topic_children`
- * here — that's often the real route into "my group's discussion", alongside
- * `listGroupDiscussions` below.
+ * replies). A topic split per-group carries `group_category_id`/
+ * `group_topic_children` here too — that's often the real route into "my
+ * group's discussion", alongside `listGroupDiscussions` below. The topic
+ * `message` (the topic's own HTML body, which can be large) is truncated to
+ * a preview — this tool is documented as metadata-only, and the full body is
+ * one `getDiscussionView` call away; everything else passes through as-is.
  */
-export function listDiscussions(client: CanvasClient, args: CourseArg) {
-  return client.getPaginated(`/courses/${args.courseId}/discussion_topics`, {});
+export async function listDiscussions(client: CanvasClient, args: CourseArg) {
+  const topics = (await client.getPaginated(
+    `/courses/${args.courseId}/discussion_topics`,
+    {},
+  )) as Array<Record<string, unknown>>;
+  return topics.map(truncateTopicMessage);
+}
+
+function truncateTopicMessage(topic: Record<string, unknown>): Record<string, unknown> {
+  if (typeof topic.message !== "string") return topic;
+  return { ...topic, message: summarizeHtml(topic.message, 500) };
 }
 
 /**
@@ -140,12 +171,19 @@ export function getDiscussionView(
   );
 }
 
-/** List discussion topics scoped to a group you belong to (not a course). */
-export function listGroupDiscussions(
+/**
+ * List discussion topics scoped to a group you belong to (not a course).
+ * Same `message` truncation as `listDiscussions` — see there for why.
+ */
+export async function listGroupDiscussions(
   client: CanvasClient,
   args: { groupId: number | string },
 ) {
-  return client.getPaginated(`/groups/${args.groupId}/discussion_topics`, {});
+  const topics = (await client.getPaginated(
+    `/groups/${args.groupId}/discussion_topics`,
+    {},
+  )) as Array<Record<string, unknown>>;
+  return topics.map(truncateTopicMessage);
 }
 
 /**
@@ -283,14 +321,26 @@ export async function getSyllabus(client: CanvasClient, args: CourseArg) {
 
 /* ---- Files ---- */
 
-/** List files in a course (locked/hidden folders are silently excluded). */
+/**
+ * List files in a course (locked/hidden folders are silently excluded).
+ * Some courses restrict file listing to instructors — degrade to a note on
+ * 403 instead of throwing, matching listCourseRubrics/getLatePolicy.
+ */
 export function listCourseFiles(
   client: CanvasClient,
   args: CourseArg & { searchTerm?: string },
 ) {
-  return client.getPaginated(`/courses/${args.courseId}/files`, {
-    search_term: args.searchTerm,
-  });
+  return softFail(
+    () =>
+      client.getPaginated(`/courses/${args.courseId}/files`, {
+        search_term: args.searchTerm,
+      }),
+    /\b403\b/,
+    {
+      available: false,
+      note: "This course restricts file listing to instructors.",
+    },
+  );
 }
 
 /**
