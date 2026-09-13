@@ -1,4 +1,4 @@
-import type { CanvasClient } from "../lib/canvas-client.js";
+import { CanvasApiError, type CanvasClient } from "../lib/canvas-client.js";
 
 /**
  * Read-only, student-scoped Canvas operations.
@@ -424,10 +424,10 @@ export async function getSyllabus(client: CanvasClient, args: CourseArg) {
 /**
  * List files in a course (locked/hidden folders are silently excluded).
  * Some courses restrict file listing to instructors — degrade to a note on
- * 403 instead of throwing, matching listCourseRubrics/getLatePolicy. Anchored
- * on the specific "Forbidden" throw (see PERMISSION_DENIED) rather than a
- * blanket 403 match, so a rate-limit throw (which also contains "403") can't
- * be mistaken for "this course restricts files."
+ * a genuine 403 instead of throwing, matching listCourseRubrics/getLatePolicy.
+ * Checks `.kind === "forbidden"` rather than the status alone, so a
+ * rate-limit throw (also status 403) can't be mistaken for "this course
+ * restricts files."
  */
 export function listCourseFiles(
   client: CanvasClient,
@@ -438,7 +438,7 @@ export function listCourseFiles(
       client.getPaginated(`/courses/${args.courseId}/files`, {
         search_term: args.searchTerm,
       }),
-    PERMISSION_DENIED,
+    isForbidden,
     {
       available: false,
       note: "This course restricts file listing to instructors.",
@@ -712,13 +712,28 @@ async function assertOwnContext(
 }
 
 /**
- * Canvas's permission-denied throw is `"Canvas API 403 Forbidden for ..."`
- * (canvas-client.ts) — anchored at the start so it can never collide with
- * the rate-limit throw, which also contains the literal substring "403"
- * (`"Canvas API rate limit hit (403). ..."`). A blanket `/\b403\b/` match
- * would misfire on a throttled request and blame permissions instead.
+ * Canvas's rate-limit throw carries `status: 403, kind: "rate_limit"`, and a
+ * real permission denial carries `status: 403, kind: "forbidden"` — same
+ * status, different kind. Checking `.kind` (not the message string, and not
+ * `.status` alone) is what makes these genuinely distinguishable: matching
+ * on the message text used to misfire on a rate-limit throw, since it also
+ * contains the literal substring "403" (`"Canvas API rate limit hit
+ * (403)..."`).
  */
-const PERMISSION_DENIED = /^Canvas API 403 Forbidden/;
+function isForbidden(e: unknown): e is CanvasApiError {
+  return e instanceof CanvasApiError && e.kind === "forbidden";
+}
+
+/** Forbidden OR unauthorized — the two "you can't read/write this" kinds. */
+function isPermissionIssue(e: unknown): e is CanvasApiError {
+  return e instanceof CanvasApiError && (e.kind === "forbidden" || e.kind === "unauthorized");
+}
+
+/** True when `e` is a `CanvasApiError` whose status is one of `statuses`. */
+function hasStatus(...statuses: number[]) {
+  return (e: unknown): e is CanvasApiError =>
+    e instanceof CanvasApiError && statuses.includes(e.status);
+}
 
 /**
  * A student enrollment (what `assertOwnContext` checks) does not imply
@@ -737,7 +752,7 @@ async function withCalendarPermissionHint<T>(
   } catch (e) {
     const isCourseOrGroup = /^(course|group)_/.test(contextCode ?? "");
     const msg = (e as Error).message ?? "";
-    if (isCourseOrGroup && PERMISSION_DENIED.test(msg)) {
+    if (isCourseOrGroup && isForbidden(e)) {
       throw new Error(
         `${msg} — students typically lack calendar-write permission on a ` +
           "course/group context (or the course has concluded); try " +
@@ -839,7 +854,7 @@ export function listCoursePages(
       client.getPaginated(`/courses/${args.courseId}/pages`, {
         search_term: args.searchTerm,
       }),
-    /\b404\b/,
+    hasStatus(404),
     {
       available: false,
       note: "This course doesn't use Canvas Pages — check Modules or Files for content.",
@@ -867,7 +882,7 @@ const RUBRIC_DENIED = {
 export function listCourseRubrics(client: CanvasClient, args: CourseArg) {
   return softFail(
     () => client.getPaginated(`/courses/${args.courseId}/rubrics`, {}),
-    /\b40[13]\b/,
+    isPermissionIssue,
     RUBRIC_DENIED,
   );
 }
@@ -882,7 +897,7 @@ export function getRubric(
       client.get(`/courses/${args.courseId}/rubrics/${args.rubricId}`, {
         include: ["assessments"],
       }),
-    /\b40[13]\b/,
+    isPermissionIssue,
     RUBRIC_DENIED,
   );
 }
@@ -899,7 +914,7 @@ export function getRubric(
 export function listQuizzes(client: CanvasClient, args: CourseArg) {
   return softFail(
     () => client.getPaginated(`/courses/${args.courseId}/quizzes`, {}),
-    /\b404\b/,
+    hasStatus(404),
     {
       available: false,
       note:
@@ -982,8 +997,7 @@ export async function listCoursePeople(client: CanvasClient, args: CourseArg) {
       enrollment_type: ["student"],
     });
   } catch (e) {
-    const msg = (e as Error).message;
-    if (/\b403\b/.test(msg)) {
+    if (isForbidden(e)) {
       return {
         restricted: true,
         note: "This course restricts students from viewing the roster.",
@@ -1005,8 +1019,7 @@ export async function getLatePolicy(client: CanvasClient, args: CourseArg) {
   try {
     return await client.get(`/courses/${args.courseId}/late_policy`);
   } catch (e) {
-    const msg = (e as Error).message;
-    if (/\b40[13]\b/.test(msg)) {
+    if (isPermissionIssue(e)) {
       return {
         available: false,
         note: "This course's late policy is not readable with a student token — check the syllabus for late-penalty tiers.",
@@ -1029,7 +1042,7 @@ export function smartSearch(
   return softFail(
     () =>
       client.get(`/courses/${args.courseId}/smartsearch`, { q: args.query }),
-    /\b40[0134]\b/,
+    hasStatus(400, 401, 403, 404),
     {
       available: false,
       note: "Smart Search (beta) is not enabled for this course/Canvas instance.",
@@ -1045,7 +1058,7 @@ export function smartSearch(
 export async function getGradingStandards(client: CanvasClient, args: CourseArg) {
   const res = await softFail(
     () => client.getPaginated(`/courses/${args.courseId}/grading_standards`, {}),
-    /\b40[134]\b/,
+    hasStatus(401, 403, 404),
     {
       available: false,
       note: "Grading standards are not readable with a student token for this course — check the syllabus.",
@@ -1066,16 +1079,16 @@ export async function getGradingStandards(client: CanvasClient, args: CourseArg)
 
 /* ---- helpers ---- */
 
-/** Run `fn`; if it fails with an HTTP status matching `pattern`, return `note`. */
+/** Run `fn`; if it fails and `matches` the thrown error, return `note` instead. */
 async function softFail<T>(
   fn: () => Promise<T>,
-  pattern: RegExp,
+  matches: (e: unknown) => boolean,
   note: object,
 ): Promise<T | object> {
   try {
     return await fn();
   } catch (e) {
-    if (pattern.test((e as Error).message)) return note;
+    if (matches(e)) return note;
     throw e;
   }
 }

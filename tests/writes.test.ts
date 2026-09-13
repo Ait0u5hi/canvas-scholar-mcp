@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import type { CanvasClient } from "../src/lib/canvas-client.js";
+import { CanvasApiError, type CanvasClient } from "../src/lib/canvas-client.js";
 import * as canvas from "../src/tools/canvas-tools.js";
 
 function mockClient(
@@ -134,7 +134,9 @@ describe("classic quizzes degrade gracefully (empty vs. disabled are distinguish
 
   it("a 404 (feature disabled / wrong course id) degrades to a note, not a throw", async () => {
     const c = mockClient({
-      getPaginated: vi.fn().mockRejectedValue(new Error("Canvas API 404 Not Found")),
+      getPaginated: vi
+        .fn()
+        .mockRejectedValue(new CanvasApiError("Canvas API 404 Not Found", 404, "other")),
     });
     const res = (await canvas.listQuizzes(c, { courseId: 1 })) as { available?: boolean };
     expect(res.available).toBe(false);

@@ -19,6 +19,28 @@ export interface UsageInfo {
   status: "ok" | "getting low" | "unknown";
 }
 
+/**
+ * A failed Canvas API call, carrying the real HTTP status and a coarse
+ * `kind` classification as structured fields — not just prose. Error
+ * handling elsewhere in this codebase used to classify failures by regexing
+ * the thrown message (e.g. `/\b403\b/`), which is fragile: Canvas's
+ * rate-limit message also contains the literal substring "403"
+ * (`"Canvas API rate limit hit (403)..."`), so a naive substring match
+ * misclassifies a throttled request as a permission failure. Check `.status`
+ * or `.kind` instead of matching on `.message`.
+ */
+export class CanvasApiError extends Error {
+  readonly status: number;
+  readonly kind: "rate_limit" | "forbidden" | "unauthorized" | "other";
+
+  constructor(message: string, status: number, kind: CanvasApiError["kind"]) {
+    super(message);
+    this.name = "CanvasApiError";
+    this.status = status;
+    this.kind = kind;
+  }
+}
+
 export class CanvasClient {
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
@@ -144,23 +166,31 @@ export class CanvasClient {
       if (res.status === 403 || res.status === 429) {
         const body = await res.text().catch(() => "");
         if (res.status === 429 || /rate limit/i.test(body)) {
-          throw new Error(
+          throw new CanvasApiError(
             `Canvas API rate limit hit (${res.status}). Your request budget is ` +
               `temporarily exhausted — wait ~a minute for it to refill, then retry.`,
+            res.status,
+            "rate_limit",
           );
         }
-        throw new Error(`Canvas API 403 Forbidden for ${redact(url)}`);
+        throw new CanvasApiError(
+          `Canvas API 403 Forbidden for ${redact(url)}`,
+          403,
+          "forbidden",
+        );
       }
       // Canvas write failures normally carry a JSON `errors[]`/`message` body
       // (e.g. "end_at can't be before start_at") — surface it instead of a
       // bare, useless "400 Bad Request".
       const detail = await extractErrorDetail(res);
-      throw new Error(
+      throw new CanvasApiError(
         `Canvas API ${res.status} ${res.statusText} for ${redact(url)}` +
           (res.status === 401
             ? " — the token is likely invalid or expired."
             : "") +
           (detail ? ` — ${detail}` : ""),
+        res.status,
+        res.status === 401 ? "unauthorized" : "other",
       );
     }
     return res;
