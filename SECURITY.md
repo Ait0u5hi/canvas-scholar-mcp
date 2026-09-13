@@ -3,14 +3,20 @@
 ## Trust boundary
 
 Canvas Scholar runs entirely on your machine and talks to exactly one remote: your
-institution's Canvas host, using **your** personal access token. It makes only
-read (`GET`) requests and only to `/users/self/…` or your own enrollment records.
+institution's Canvas host, using **your** personal access token. Almost every tool
+makes only read (`GET`) requests, scoped to `/users/self/…` or your own enrollment
+records.
 
 - It **cannot** read another student's data. The one call that hits a class-wide
   endpoint (`/courses/:id/enrollments`) is always scoped with `user_id: "self"`,
   and a regression test (`tests/privacy.test.ts`) fails the build if that scope
   is ever removed.
-- It **never writes** to Canvas.
+- **Two tools write to Canvas**: `canvas_create_calendar_event` and
+  `canvas_update_calendar_event` (calendar only — nothing else is writable).
+  Both are annotated `destructiveHint: true` so a compliant MCP client asks for
+  confirmation before calling them, and both re-check their target
+  (`contextCode`) against your own courses/groups/user id before writing —
+  see `tests/writes.test.ts`. Every other tool remains read-only.
 - It **never logs** your token, request bodies, or personal data. Diagnostics go
   to stderr and contain only high-level status.
 

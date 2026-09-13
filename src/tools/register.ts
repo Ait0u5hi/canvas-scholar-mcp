@@ -5,12 +5,17 @@ import { fenceUntrusted } from "../lib/untrusted.js";
 import * as canvas from "./canvas-tools.js";
 
 /**
- * Wire the read-only Canvas operations up as MCP tools.
+ * Wire the Canvas operations up as MCP tools.
  *
- * Every tool is annotated read-only and non-destructive. The hints live under
- * an `annotations` object (that is where the MCP SDK reads them from); putting
- * them at the top level silently drops them and the client falls back to the
- * pessimistic assumed-destructive posture.
+ * Almost every tool here is read-only and non-destructive, via the `ro()`
+ * helper. Two exceptions — `canvas_create_calendar_event` and
+ * `canvas_update_calendar_event` — are deliberate writes and are annotated
+ * `readOnlyHint: false, destructiveHint: true` instead, so a client prompts
+ * for confirmation before calling them.
+ *
+ * Hints live under an `annotations` object (that is where the MCP SDK reads
+ * them from); putting them at the top level silently drops them and the
+ * client falls back to the pessimistic assumed-destructive posture.
  */
 export function registerTools(server: McpServer, client: CanvasClient): void {
   // Wrap a result as MCP text, appending an occasional low-budget notice.
@@ -36,6 +41,17 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       destructiveHint: false,
     },
   });
+  // The two write tools: not read-only, not idempotent, require confirmation.
+  const write = (title: string) => ({
+    title,
+    annotations: {
+      title,
+      readOnlyHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      destructiveHint: true,
+    },
+  });
   // Numeric ids only. Rejecting non-numeric strings at the validation boundary
   // stops path-injection (e.g. a crafted "123/submissions/456?" from a prompt-
   // injected call escaping a `self`-scoped path).
@@ -43,8 +59,23 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
     .union([z.number().int(), z.string().regex(/^\d+$/, "must be a numeric id")])
     .describe("Canvas numeric id");
   const courseId = id.describe("Canvas course id");
+  const groupId = id.describe("Canvas group id");
   // Page slugs are not numeric, so they get their own schema.
   const pageSlug = z.union([z.number(), z.string()]);
+  // Same path-injection concern as `id` above: a write tool's context code is
+  // the first non-numeric, path-adjacent write input, so it's regex-pinned
+  // rather than a free-form string. `canvas.createCalendarEvent`/
+  // `updateCalendarEvent` additionally re-check it against the caller's own
+  // courses/groups before writing — this schema only rules out malformed shape.
+  const contextCode = z
+    .string()
+    .regex(
+      /^(course|user|group)_\d+$/,
+      "must be like course_123, group_45, or user_67 (usually your own user id)",
+    )
+    .describe(
+      "Canvas context code — course_<id>, group_<id>, or user_<your own id>",
+    );
 
   /* -------------------- courses / assignments / grades -------------------- */
 
@@ -273,13 +304,54 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
     async (args) => ok(await canvas.getCalendarEvent(client, args)),
   );
 
+  const calendarEventFields = {
+    title: z.string().optional().describe("Event title"),
+    startAt: z.string().optional().describe("ISO 8601 start time"),
+    endAt: z.string().optional().describe("ISO 8601 end time"),
+    description: z.string().optional().describe("Event description (HTML allowed)"),
+    locationName: z.string().optional().describe("Location text"),
+  };
+
+  server.registerTool(
+    "canvas_create_calendar_event",
+    {
+      ...write("Create a calendar event"),
+      description:
+        "Create a calendar event on one of your own courses/groups, or your " +
+        "personal calendar (contextCode user_<your id>). WRITE — modifies " +
+        "your real Canvas calendar; requires confirmation.",
+      inputSchema: { contextCode, ...calendarEventFields },
+    },
+    async (args) => ok(await canvas.createCalendarEvent(client, args)),
+  );
+
+  server.registerTool(
+    "canvas_update_calendar_event",
+    {
+      ...write("Update a calendar event"),
+      description:
+        "Update an existing calendar event — only the fields you pass are " +
+        "changed. WRITE — modifies your real Canvas calendar; requires " +
+        "confirmation.",
+      inputSchema: {
+        eventId: id,
+        contextCode: contextCode.optional(),
+        ...calendarEventFields,
+      },
+    },
+    async (args) => ok(await canvas.updateCalendarEvent(client, args)),
+  );
+
   /* -------------------- discussions / announcements -------------------- */
 
   server.registerTool(
     "canvas_list_discussions",
     {
       ...ro("List discussion topics"),
-      description: "List discussion topics in a course (metadata only).",
+      description:
+        "List discussion topics in a course (metadata only). A topic split " +
+        "per-group carries group_category_id/group_topic_children here too — " +
+        "see canvas_list_group_discussions for the group-scoped endpoint.",
       inputSchema: { courseId },
     },
     async (args) => okUntrusted(await canvas.listDiscussions(client, args), "course discussions"),
@@ -294,6 +366,33 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       inputSchema: { courseId, topicId: id.describe("Discussion topic id") },
     },
     async (args) => okUntrusted(await canvas.getDiscussionView(client, args), "discussion thread"),
+  );
+
+  server.registerTool(
+    "canvas_list_group_discussions",
+    {
+      ...ro("List a group's discussion topics"),
+      description:
+        "List discussion topics scoped to a group you belong to (metadata " +
+        "only) — distinct from course-level discussions. Use " +
+        "canvas_list_my_groups to find your groupId.",
+      inputSchema: { groupId },
+    },
+    async (args) =>
+      okUntrusted(await canvas.listGroupDiscussions(client, args), "group discussions"),
+  );
+
+  server.registerTool(
+    "canvas_get_group_discussion_view",
+    {
+      ...ro("Read a group discussion thread"),
+      description:
+        "Full threaded view of a group-scoped discussion topic, including " +
+        "reply bodies.",
+      inputSchema: { groupId, topicId: id.describe("Discussion topic id") },
+    },
+    async (args) =>
+      okUntrusted(await canvas.getGroupDiscussionView(client, args), "group discussion thread"),
   );
 
   server.registerTool(
@@ -398,10 +497,14 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
     {
       ...ro("Get a file"),
       description:
-        "File metadata by id. The returned `url` is a ready-to-use download link.",
+        "File metadata by id, plus a `content` field with the decoded text " +
+        "when the file is small and text-like (useful when you can't reach " +
+        "the Canvas instance directly to follow the download link). Falls " +
+        "back to metadata-only (with a ready-to-use `url` download link) for " +
+        "large or binary files.",
       inputSchema: { fileId: id },
     },
-    async (args) => ok(await canvas.getFile(client, args)),
+    async (args) => okUntrusted(await canvas.getFile(client, args), "file content"),
   );
 
   server.registerTool(

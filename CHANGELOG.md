@@ -3,6 +3,32 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+First deliberate write capability: two confirmation-gated calendar tools, plus
+group-scoped discussion reads and a handful of correctness fixes.
+
+### Added
+
+- `canvas_create_calendar_event` / `canvas_update_calendar_event` — **WRITE**,
+  `destructiveHint: true`. Both re-check their `contextCode` against the
+  caller's own courses/groups/user id before writing.
+- `canvas_list_group_discussions` / `canvas_get_group_discussion_view` —
+  group-scoped discussion topics, previously only reachable at the course
+  level (a per-group topic 404'd against the course-level endpoint).
+- `canvas_get_file` now includes a `content` field for small, text-like files
+  (size- and content-type-gated, streamed with a hard byte cap, never reuses
+  the authenticated client for the signed download URL).
+
+### Fixed
+
+- `canvas_list_quizzes` no longer throws on a course with the classic-Quizzes
+  feature disabled — degrades to a note like its sibling tools, instead of an
+  unhandled 404.
+- `CanvasClient` write failures now surface Canvas's actual `errors[]`/`message`
+  body instead of a bare "400 Bad Request", and a `204 No Content` response no
+  longer throws a parse error.
+
 ## [1.0.0] - 2026-08-24
 
 First public release. 43 read-only, student-scoped Canvas tools, 6 agent skills,

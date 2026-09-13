@@ -6,7 +6,10 @@
 
 A **student-focused** [Model Context Protocol](https://modelcontextprotocol.io) server for [Canvas LMS](https://www.instructure.com/canvas). Ask your AI assistant what's due, how you're doing, and what you've missed — it reads your Canvas directly.
 
-- **Read-only.** Every tool only reads; nothing is ever written back to Canvas.
+- **Mostly read-only.** Almost every tool only reads; two tools
+  (`canvas_create_calendar_event`, `canvas_update_calendar_event`) write to your
+  own calendar and require confirmation before running. Nothing else is ever
+  written back to Canvas.
 - **Student-scoped.** It can only see *your* data (`/users/self/…`). It cannot read a classmate's grades — enforced and regression-tested.
 - **Local & private.** Runs on your machine over stdio. Your token stays in your OS keychain (via the one-click installer) or a local env var. No data leaves your machine except calls to your own school's Canvas.
 
@@ -28,17 +31,18 @@ Once installed, just talk to your assistant:
 
 ## What it can do
 
-**43 read-only tools** across your whole student surface:
+Tools across your whole student surface (all read-only except the two marked **WRITE**):
 
 | Area | Tools |
 | --- | --- |
 | **Courses & assignments** | list courses, list/get assignments, submission **feedback** (comments + rubric), peer reviews (just mine) |
 | **Grades** | grades (all courses), per-course grade, weighted **grade breakdown** by group, late policy |
 | **What's due** | missing submissions, planner items, to-do list, calendar events, **web conferences** (live class sessions) |
-| **Discussions & news** | list discussions, read a full thread, announcements |
+| **Calendar** | list/get calendar events; **create/update a calendar event (WRITE, confirmation required)** |
+| **Discussions & news** | list discussions, read a full thread, **group-scoped discussions** (list + read a thread), announcements |
 | **Inbox** | list conversations, read a thread (never marks it read), unread count |
 | **Groups** | my groups, group details, group members |
-| **Files & content** | course files, get a file, folders, pages, syllabus, modules |
+| **Files & content** | course files, get a file (small text files include their content), folders, pages, syllabus, modules |
 | **Rubrics & quizzes** | course rubrics, get a rubric, classic quizzes, **New Quizzes**, my quiz submission |
 | **Study & grades info** | smart search (semantic course search, beta), grade-cutoff scheme |
 | **You & meta** | my profile, class roster (degrades if hidden), **API usage** counter |

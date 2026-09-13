@@ -1,13 +1,16 @@
 import type { CanvasConfig } from "./config.js";
 
 /**
- * A thin, read-only Canvas REST client built on the platform `fetch`
- * (Node 18+). No third-party HTTP dependency — this keeps the bundle a clean
- * single ESM file and avoids CJS/ESM interop hazards.
+ * A thin Canvas REST client built on the platform `fetch` (Node 18+). No
+ * third-party HTTP dependency — this keeps the bundle a clean single ESM
+ * file and avoids CJS/ESM interop hazards.
  *
  * Written against the public Canvas LMS API documentation
  * (https://canvas.instructure.com/doc/api/). It does not adapt any other
  * project's client code.
+ *
+ * Mostly read-only (`get`/`getPaginated`); `post`/`put` exist only for the
+ * two deliberately-destructive calendar-write tools — see register.ts.
  */
 export interface UsageInfo {
   requestsThisSession: number;
@@ -106,8 +109,34 @@ export class CanvasClient {
     return out;
   }
 
-  private async fetch(url: string): Promise<Response> {
-    const res = await fetch(url, { headers: this.headers });
+  /** POST a JSON body to Canvas (e.g. creating a calendar event). */
+  async post<T = unknown>(path: string, body: unknown): Promise<T> {
+    return this.write<T>("POST", path, body);
+  }
+
+  /** PUT a JSON body to Canvas (e.g. updating a calendar event). */
+  async put<T = unknown>(path: string, body: unknown): Promise<T> {
+    return this.write<T>("PUT", path, body);
+  }
+
+  private async write<T>(
+    method: "POST" | "PUT",
+    path: string,
+    body: unknown,
+  ): Promise<T> {
+    const res = await this.fetch(this.buildUrl(path, {}), {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return (await this.parse(res)) as T;
+  }
+
+  private async fetch(url: string, init: RequestInit = {}): Promise<Response> {
+    const res = await fetch(url, {
+      ...init,
+      headers: { ...this.headers, ...(init.headers as Record<string, string>) },
+    });
     this.track(res);
     if (!res.ok) {
       // Canvas signals throttling with a 403 (sometimes 429) whose body mentions
@@ -122,11 +151,16 @@ export class CanvasClient {
         }
         throw new Error(`Canvas API 403 Forbidden for ${redact(url)}`);
       }
+      // Canvas write failures normally carry a JSON `errors[]`/`message` body
+      // (e.g. "end_at can't be before start_at") — surface it instead of a
+      // bare, useless "400 Bad Request".
+      const detail = await extractErrorDetail(res);
       throw new Error(
         `Canvas API ${res.status} ${res.statusText} for ${redact(url)}` +
           (res.status === 401
             ? " — the token is likely invalid or expired."
-            : ""),
+            : "") +
+          (detail ? ` — ${detail}` : ""),
       );
     }
     return res;
@@ -136,8 +170,10 @@ export class CanvasClient {
    * Guard against an HTML error/login page masquerading as a 200. Canvas serves
    * HTML (not JSON) when a token is invalid or a route is wrong. Coercing the
    * header to a string keeps the check total regardless of header representation.
+   * A `PUT` can legitimately return `204 No Content` (no body to parse at all).
    */
   private async parse(res: Response): Promise<unknown> {
+    if (res.status === 204) return undefined;
     const contentType = String(res.headers.get("content-type") ?? "");
     if (contentType && !contentType.includes("application/json")) {
       throw new Error(
@@ -183,4 +219,31 @@ export function nextLink(linkHeader: unknown): string | undefined {
 /** Never surface the token if a URL ever carries it. */
 function redact(url: string): string {
   return url.replace(/access_token=[^&]+/g, "access_token=REDACTED");
+}
+
+/**
+ * Best-effort extraction of Canvas's error detail from a failed response body
+ * — Canvas write failures typically return `{"errors": [{"message": "..."}]}`
+ * or `{"message": "..."}`. Falls back to a truncated raw body, and never
+ * throws itself (a malformed error body shouldn't hide the original error).
+ */
+async function extractErrorDetail(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    if (!text) return "";
+    const parsed = JSON.parse(text) as {
+      errors?: Array<{ message?: string }> | Record<string, unknown>;
+      message?: string;
+    };
+    if (Array.isArray(parsed?.errors)) {
+      return parsed.errors
+        .map((e) => e?.message ?? JSON.stringify(e))
+        .join("; ");
+    }
+    if (typeof parsed?.message === "string") return parsed.message;
+    if (parsed?.errors) return JSON.stringify(parsed.errors);
+    return text.slice(0, 300);
+  } catch {
+    return "";
+  }
 }
