@@ -116,7 +116,13 @@ export function getCourseGrade(client: CanvasClient, args: CourseArg) {
   });
 }
 
-/** List discussion topics in a course (metadata only; use getDiscussionView for replies). */
+/**
+ * List discussion topics in a course (metadata only; use getDiscussionView for
+ * replies). Canvas's raw topic objects pass through unmodified, so a topic
+ * split per-group already carries `group_category_id`/`group_topic_children`
+ * here — that's often the real route into "my group's discussion", alongside
+ * `listGroupDiscussions` below.
+ */
 export function listDiscussions(client: CanvasClient, args: CourseArg) {
   return client.getPaginated(`/courses/${args.courseId}/discussion_topics`, {});
 }
@@ -132,6 +138,35 @@ export function getDiscussionView(
   return client.get(
     `/courses/${args.courseId}/discussion_topics/${args.topicId}/view`,
   );
+}
+
+/** List discussion topics scoped to a group you belong to (not a course). */
+export function listGroupDiscussions(
+  client: CanvasClient,
+  args: { groupId: number | string },
+) {
+  return client.getPaginated(`/groups/${args.groupId}/discussion_topics`, {});
+}
+
+/**
+ * Full threaded view of a group-scoped discussion topic. Canvas can return
+ * `{"status": "in_progress"}` while a large discussion is still materializing
+ * server-side — surface that as a note instead of assuming entries are ready.
+ */
+export async function getGroupDiscussionView(
+  client: CanvasClient,
+  args: { groupId: number | string; topicId: number | string },
+) {
+  const view = (await client.get(
+    `/groups/${args.groupId}/discussion_topics/${args.topicId}/view`,
+  )) as { status?: string } & Record<string, unknown>;
+  if (view && view.status === "in_progress") {
+    return {
+      available: false,
+      note: "Canvas is still materializing this discussion view — try again shortly.",
+    };
+  }
+  return view;
 }
 
 /** Assignments the current user has not submitted and are past/near due. */
@@ -259,11 +294,80 @@ export function listCourseFiles(
 }
 
 /**
- * File metadata. The returned `url` field is itself a signed, time-limited
- * download link usable with the same token — no separate download call.
+ * File metadata, plus a `content` field with the decoded text when the file
+ * is small and text-like — a real win on a network that can't reach the
+ * Canvas instance directly to follow the metadata `url` itself. Falls back to
+ * metadata-only (the original behavior) for large or binary files.
+ *
+ * The content fetch deliberately does NOT go through `CanvasClient` — the
+ * metadata `url` is already a signed, pre-authorized link (and typically
+ * redirects to a separate CDN/S3 host), so reusing the client's bearer-header
+ * fetch would risk sending the Canvas token to a third-party origin. The size
+ * gate is checked from metadata *before* fetching, and enforced again as a
+ * hard streaming byte cap during download (metadata `size` can be stale, and
+ * a chunked response has no `Content-Length` to check up front at all).
  */
-export function getFile(client: CanvasClient, args: { fileId: number | string }) {
-  return client.get(`/files/${args.fileId}`);
+export async function getFile(
+  client: CanvasClient,
+  args: { fileId: number | string },
+) {
+  const meta = (await client.get(`/files/${args.fileId}`)) as {
+    url?: string;
+    size?: number;
+    "content-type"?: string;
+  };
+  const contentType = String(meta["content-type"] ?? "");
+  const size = Number(meta.size);
+  const looksTexty = /^(text\/|application\/(json|xml|javascript))/i.test(
+    contentType,
+  );
+  if (!meta.url || !looksTexty || !Number.isFinite(size) || size > FILE_CONTENT_MAX_BYTES) {
+    return meta;
+  }
+  const content = await fetchSmallTextFile(meta.url, FILE_CONTENT_MAX_BYTES);
+  if (content == null) return meta;
+  return { ...meta, content: truncateText(content, FILE_CONTENT_MAX_CHARS) };
+}
+
+const FILE_CONTENT_MAX_BYTES = 50_000;
+const FILE_CONTENT_MAX_CHARS = 20_000;
+
+/**
+ * Fetch a small text file from an already-signed Canvas file URL. No
+ * Authorization header is ever attached — the URL's own signature is the
+ * auth, and this must never forward the Canvas bearer token to whatever host
+ * the signed link redirects to. Enforces `maxBytes` as a true streaming cap
+ * (not just a `Content-Length` check), so a stale/absent size can't let a
+ * huge body be fully buffered before being rejected.
+ */
+async function fetchSmallTextFile(
+  url: string,
+  maxBytes: number,
+): Promise<string | null> {
+  const res = await fetch(url);
+  if (!res.ok || !res.body) return null;
+  const contentLength = Number(res.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) return null;
+
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf-8");
+}
+
+/** Cap text length so a fetched file doesn't blow the response budget. */
+function truncateText(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}… [truncated]` : text;
 }
 
 /** List a course's folders (for navigating the file tree). */
@@ -372,6 +476,107 @@ export function getCalendarEvent(
   return client.get(`/calendar_events/${args.eventId}`);
 }
 
+export interface CalendarEventFields {
+  title?: string;
+  startAt?: string;
+  endAt?: string;
+  description?: string;
+  locationName?: string;
+}
+
+function calendarEventPayload(fields: CalendarEventFields) {
+  return {
+    title: fields.title,
+    start_at: fields.startAt,
+    end_at: fields.endAt,
+    description: fields.description,
+    location_name: fields.locationName,
+  };
+}
+
+/**
+ * Confirm a `contextCode` (e.g. `course_123`, `group_45`, `user_67`) refers to
+ * a course/group/user the current token's owner actually belongs to, before
+ * letting a write proceed. `contextCode` is the first non-numeric,
+ * path-adjacent write input in this server — without this check, a
+ * syntactically-valid but foreign context code (e.g. steered by a prompt
+ * injected into a discussion body the model previously read) could target a
+ * write at a course or group the caller has no business writing to.
+ */
+async function assertOwnContext(
+  client: CanvasClient,
+  contextCode: string,
+): Promise<void> {
+  const m = /^(course|user|group)_(\d+)$/.exec(contextCode);
+  if (!m) {
+    throw new Error(
+      `Invalid contextCode "${contextCode}" — expected course_<id>, group_<id>, or user_<id>.`,
+    );
+  }
+  const [, kind, idStr] = m;
+  const id = Number(idStr);
+  if (kind === "user") {
+    const me = (await client.get("/users/self/profile")) as { id?: number };
+    if (me.id !== id) {
+      throw new Error(
+        `contextCode user_${id} is not your own user id (you are user_${me.id}).`,
+      );
+    }
+    return;
+  }
+  if (kind === "course") {
+    const courses = (await listCourses(client, {
+      includeConcluded: true,
+    })) as Array<{ id: number }>;
+    if (!courses.some((c) => c.id === id)) {
+      throw new Error(
+        `contextCode course_${id} is not one of your enrolled courses.`,
+      );
+    }
+    return;
+  }
+  const groups = (await listMyGroups(client)) as Array<{ id: number }>;
+  if (!groups.some((g) => g.id === id)) {
+    throw new Error(`contextCode group_${id} is not one of your groups.`);
+  }
+}
+
+/**
+ * Create a calendar event in one of your own courses/groups (or on your
+ * personal calendar via `user_<your id>`). WRITE, destructive-annotated —
+ * see register.ts.
+ */
+export async function createCalendarEvent(
+  client: CanvasClient,
+  args: { contextCode: string } & CalendarEventFields,
+) {
+  await assertOwnContext(client, args.contextCode);
+  return client.post("/calendar_events", {
+    calendar_event: {
+      context_code: args.contextCode,
+      ...calendarEventPayload(args),
+    },
+  });
+}
+
+/**
+ * Update an existing calendar event. Only fields you pass are changed;
+ * `contextCode`, if given, is re-checked the same way as create. WRITE,
+ * destructive-annotated — see register.ts.
+ */
+export async function updateCalendarEvent(
+  client: CanvasClient,
+  args: { eventId: number | string; contextCode?: string } & CalendarEventFields,
+) {
+  if (args.contextCode) await assertOwnContext(client, args.contextCode);
+  return client.put(`/calendar_events/${args.eventId}`, {
+    calendar_event: {
+      ...(args.contextCode ? { context_code: args.contextCode } : {}),
+      ...calendarEventPayload(args),
+    },
+  });
+}
+
 /**
  * Web conferences (BigBlueButton, etc.) — live class sessions and their join
  * links. IMPORTANT: these do NOT appear in `/calendar_events`, so a "what's on
@@ -471,9 +676,25 @@ export function getRubric(
 
 /* ---- Quizzes (classic only — New Quizzes surface via assignments) ---- */
 
-/** List classic quizzes in a course. */
+/**
+ * List classic quizzes in a course. `/courses/:id/quizzes` 404s when the
+ * course has the classic-Quizzes feature disabled (a course-level toggle, not
+ * "zero quizzes" — a genuinely empty course still returns 200 + `[]`, which
+ * passes through unchanged below). Degrade the 404 case gracefully instead of
+ * throwing, matching the pattern already used by listCoursePages et al.
+ */
 export function listQuizzes(client: CanvasClient, args: CourseArg) {
-  return client.getPaginated(`/courses/${args.courseId}/quizzes`, {});
+  return softFail(
+    () => client.getPaginated(`/courses/${args.courseId}/quizzes`, {}),
+    /\b404\b/,
+    {
+      available: false,
+      note:
+        "Classic Quizzes aren't available here — either this course has the " +
+        "Quizzes feature disabled, or the course id is wrong. Check " +
+        "canvas_list_new_quizzes for New Quizzes instead.",
+    },
+  );
 }
 
 /** Get one classic quiz. */
