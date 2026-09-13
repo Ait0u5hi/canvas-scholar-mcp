@@ -5,10 +5,23 @@
 #
 # Env vars (all optional):
 #   DEPLOY_SERVICE   systemd service name to restart (default: canvas-scholar-mcp)
+#   DEPLOY_RUN_AS    user to run git/npm as via `sudo -u -H` (default: unset —
+#                    run as whoever invoked this script). Same reasoning as
+#                    deploy.sh: systemctl needs root, git/npm need to run as
+#                    whichever user owns the checkout so file ownership stays
+#                    correct for the systemd service's own `User=`.
 
 set -euo pipefail
 
 SERVICE="${DEPLOY_SERVICE:-canvas-scholar-mcp}"
+
+run_as_owner() {
+  if [ -n "${DEPLOY_RUN_AS:-}" ]; then
+    sudo -u "$DEPLOY_RUN_AS" -H "$@"
+  else
+    "$@"
+  fi
+}
 
 if [ ! -f .last-deployed-sha ]; then
   echo "error: no .last-deployed-sha found in $(pwd) — nothing recorded to roll back to." >&2
@@ -17,7 +30,7 @@ if [ ! -f .last-deployed-sha ]; then
 fi
 
 PREV_SHA="$(cat .last-deployed-sha)"
-CURRENT_SHA="$(git rev-parse HEAD)"
+CURRENT_SHA="$(run_as_owner git rev-parse HEAD)"
 
 if [ "$PREV_SHA" = "$CURRENT_SHA" ]; then
   echo "error: .last-deployed-sha ($PREV_SHA) is the current HEAD — nothing to roll back," \
@@ -26,11 +39,11 @@ if [ "$PREV_SHA" = "$CURRENT_SHA" ]; then
 fi
 
 echo "==> Rolling back $CURRENT_SHA -> $PREV_SHA"
-git checkout "$PREV_SHA"
+run_as_owner git checkout "$PREV_SHA"
 
 echo "==> Installing + building"
-npm ci
-npm run build
+run_as_owner npm ci
+run_as_owner npm run build
 
 echo "==> Restarting $SERVICE"
 systemctl restart "$SERVICE"

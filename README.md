@@ -184,11 +184,14 @@ pull-build-restart-verify without any host-specific assumptions baked in —
 they take the git ref and service name as env vars, not hardcoded values:
 
 ```bash
-# On the host the server actually runs on, from the repo's working directory:
-DEPLOY_REF=main DEPLOY_SERVICE=canvas-scholar-mcp scripts/deploy.sh
+# On the host the server actually runs on, from the repo's working directory.
+# If the systemd unit runs as a dedicated user (e.g. `User=canvas`) but you
+# need root to restart it, set DEPLOY_RUN_AS so git/npm build as the right
+# user while systemctl still runs as the invoker (root):
+DEPLOY_REF=main DEPLOY_SERVICE=canvas-scholar-mcp DEPLOY_RUN_AS=canvas scripts/deploy.sh
 
 # Something went wrong? Roll back to what was running before that deploy:
-DEPLOY_SERVICE=canvas-scholar-mcp scripts/rollback.sh
+DEPLOY_SERVICE=canvas-scholar-mcp DEPLOY_RUN_AS=canvas scripts/rollback.sh
 ```
 
 `deploy.sh` records the pre-deploy commit itself (`.last-deployed-sha`,
