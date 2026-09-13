@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.1.0] - 2026-09-13
 
 First deliberate write capability: two confirmation-gated calendar tools, plus
 group-scoped discussion reads and a handful of correctness fixes.
@@ -28,6 +28,19 @@ group-scoped discussion reads and a handful of correctness fixes.
 - `CanvasClient` write failures now surface Canvas's actual `errors[]`/`message`
   body instead of a bare "400 Bad Request", and a `204 No Content` response no
   longer throws a parse error.
+- `canvas_list_course_files` no longer throws on a course that restricts file
+  listing to instructors — degrades to a note like its sibling tools, instead
+  of an unhandled 403.
+- `canvas_list_assignments`/`canvas_get_assignment` bloat: assignments always
+  carried Canvas's `secure_params` (an LTI-launch JWT, irrelevant to a read
+  tool) and an untruncated `description`. Now stripped/truncated per-row — a
+  course-scoped list is naturally bounded by course size, so the fix is
+  per-row trimming, not a row-count cap (which would risk hiding a real
+  assignment).
+- `canvas_list_discussions`/`canvas_list_group_discussions` now truncate each
+  topic's `message` body to a preview (full text is one `getDiscussionView`/
+  `getGroupDiscussionView` call away) — the same token-budget rationale as
+  the assignments fix above.
 
 ## [1.0.0] - 2026-08-24
 
