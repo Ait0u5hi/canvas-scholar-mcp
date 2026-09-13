@@ -1,7 +1,7 @@
 {
   "name": "canvas-scholar-mcp",
-  "version": "1.1.0",
-  "description": "A student-focused Canvas LMS MCP server: check your assignments, grades, discussions, missing work, and planner from any MCP client. Mostly read-only, local, privacy-preserving — two confirmation-gated tools can write your own calendar.",
+  "version": "1.2.0",
+  "description": "A student-focused Canvas LMS MCP server: check your assignments, grades, discussions, missing work, and planner from any MCP client. Mostly read-only, local, privacy-preserving — a few confirmation-gated tools can write your own calendar and to-do notes.",
   "keywords": [
     "mcp",
     "model-context-protocol",

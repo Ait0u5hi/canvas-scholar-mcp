@@ -2,9 +2,9 @@
   "manifest_version": "0.2",
   "name": "canvas-scholar-mcp",
   "display_name": "Canvas Scholar",
-  "version": "1.1.0",
-  "description": "Check your Canvas assignments, grades, discussions, missing work, and planner — student-scoped, mostly read-only, with confirmation-gated calendar writes.",
-  "long_description": "A student-focused Canvas LMS MCP server. It reads only your own data (your courses, your grades, your submissions) over a connection scoped to your school's Canvas. Two tools can create/update your own calendar events (confirmation required); nothing else is written back to Canvas. Your API token is stored in your OS keychain, never in a plaintext config file.",
+  "version": "1.2.0",
+  "description": "Check your Canvas assignments, grades, discussions, missing work, and planner — student-scoped, mostly read-only, with confirmation-gated calendar and to-do writes.",
+  "long_description": "A student-focused Canvas LMS MCP server. It reads only your own data (your courses, your grades, your submissions) over a connection scoped to your school's Canvas. A few tools can create/update your own calendar events and to-do notes (confirmation required); nothing else is written back to Canvas. Your API token is stored in your OS keychain, never in a plaintext config file.",
   "author": {
     "name": "Ait0u5hi"
   },

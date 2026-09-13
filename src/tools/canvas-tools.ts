@@ -36,12 +36,12 @@ export function listCourses(
  *
  * Trims per-assignment bloat that has nothing to do with the tool's purpose:
  * Canvas always includes `secure_params` (an LTI-launch JWT — irrelevant to a
- * read tool) on every assignment, and rich-text `description` HTML can be
- * large. A course-scoped list is naturally bounded by how many assignments
- * the course has, so — unlike listConferences' cross-course, unbounded
- * history — a ROW-count cap here would risk silently hiding a real
- * assignment; trimming per-row bloat is the safe lever, not truncating the
- * list itself.
+ * read tool) on every assignment, rich-text `description` HTML can be large,
+ * and an attached `rubric`'s full criteria/ratings tree can be large too. A
+ * course-scoped list is naturally bounded by how many assignments the course
+ * has, so — unlike listConferences' cross-course, unbounded history — a
+ * ROW-count cap here would risk silently hiding a real assignment; trimming
+ * per-row bloat is the safe lever, not truncating the list itself.
  */
 export async function listAssignments(
   client: CanvasClient,
@@ -54,14 +54,46 @@ export async function listAssignments(
   return assignments.map(trimAssignmentBloat);
 }
 
-/** Drop/shrink fields that are pure bloat for a read-only assistant tool. */
+/**
+ * Drop/shrink fields that are pure bloat for a read-only assistant tool.
+ *
+ * `rubric` is TRUNCATED, not dropped — some courses restrict the dedicated
+ * rubric endpoints to instructors (`RUBRIC_DENIED` below), which makes the
+ * copy embedded on the assignment the *only* student-readable rubric. Only
+ * `secure_params` (an LTI-launch JWT, never useful to a read tool, and never
+ * the only copy of anything) is safe to drop outright.
+ */
 function trimAssignmentBloat(a: Record<string, unknown>): Record<string, unknown> {
   const trimmed: Record<string, unknown> = { ...a };
   delete trimmed.secure_params;
   if (typeof trimmed.description === "string") {
     trimmed.description = summarizeHtml(trimmed.description, 1000);
   }
+  if (Array.isArray(trimmed.rubric)) {
+    trimmed.rubric = trimmed.rubric.map(truncateRubricCriterion);
+  }
   return trimmed;
+}
+
+/** Truncate the free-text fields of one rubric criterion (and its ratings). */
+function truncateRubricCriterion(criterion: unknown): unknown {
+  if (!criterion || typeof criterion !== "object") return criterion;
+  const c = criterion as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...c };
+  if (typeof out.description === "string") out.description = summarizeHtml(out.description, 200);
+  if (typeof out.long_description === "string") {
+    out.long_description = summarizeHtml(out.long_description, 200);
+  }
+  if (Array.isArray(out.ratings)) {
+    out.ratings = out.ratings.map((r) => {
+      if (!r || typeof r !== "object") return r;
+      const rating = r as Record<string, unknown>;
+      return typeof rating.description === "string"
+        ? { ...rating, description: summarizeHtml(rating.description, 200) }
+        : rating;
+    });
+  }
+  return out;
 }
 
 /**
@@ -72,15 +104,24 @@ function trimAssignmentBloat(a: Record<string, unknown>): Record<string, unknown
  * documented `new_quizzes=true` param — same student-readable endpoint, no extra
  * scope. (Reading a New Quiz's actual questions needs Canvas's separate,
  * developer-key-gated New Quizzes API, which a student token can't rely on.)
+ * Hits the identical assignment shape as `listAssignments`, so it gets the
+ * same per-row trim.
  */
-export function listNewQuizzes(client: CanvasClient, args: CourseArg) {
-  return client.getPaginated(`/courses/${args.courseId}/assignments`, {
-    new_quizzes: true,
-    include: ["submission"],
-  });
+export async function listNewQuizzes(client: CanvasClient, args: CourseArg) {
+  const assignments = (await client.getPaginated(
+    `/courses/${args.courseId}/assignments`,
+    { new_quizzes: true, include: ["submission"] },
+  )) as Array<Record<string, unknown>>;
+  return assignments.map(trimAssignmentBloat);
 }
 
-/** Get one assignment, including the current user's submission. */
+/**
+ * Get one assignment, including the current user's submission. A single
+ * object isn't the bloat driver a list is, but `secure_params` is never
+ * useful here either — drop it for consistency. `rubric` (if attached) is
+ * left at full detail: no per-row multiplication risk at N=1, and this is
+ * already the tool a caller would use for the untruncated rubric.
+ */
 export async function getAssignment(
   client: CanvasClient,
   args: CourseArg & { assignmentId: number | string },
@@ -91,6 +132,7 @@ export async function getAssignment(
     // only when Canvas allows it (≥5 graded submissions, instructor-enabled).
     { include: ["submission", "score_statistics"] },
   )) as Record<string, unknown>;
+  delete a.secure_params;
   // Canvas omits the key entirely when stats aren't available; say so explicitly
   // rather than leaving the caller guessing (matches our other note-on-absence
   // patterns for rubrics/pages/grading standards).
@@ -237,6 +279,54 @@ export function getPlannerItems(
   });
 }
 
+export interface PlannerNoteFields {
+  title?: string;
+  details?: string;
+  todoDate?: string;
+}
+
+/**
+ * Create a personal "My To-Do" item (`planner_notes`), optionally tagged
+ * under a course. Distinct from `calendar_events`: students can tag a
+ * planner note to any course they belong to (no `manage_calendar`-style
+ * permission needed, unlike a course-context calendar event), which is the
+ * whole reason this tool exists alongside the calendar-write tools. WRITE,
+ * destructive-annotated — see register.ts.
+ */
+export async function createPlannerNote(
+  client: CanvasClient,
+  args: { courseId?: number | string; todoDate: string } & PlannerNoteFields,
+) {
+  if (args.courseId != null) await assertOwnCourse(client, args.courseId);
+  return client.post("/planner_notes", {
+    title: args.title,
+    details: args.details,
+    todo_date: args.todoDate,
+    course_id: args.courseId,
+  });
+}
+
+/**
+ * Update an existing planner note. Only fields you pass are changed. Unlike
+ * `updateCalendarEvent`, there is no ownership re-check to perform here:
+ * Canvas scopes `/planner_notes/:id` to the token's own user server-side, so
+ * the numeric `noteId` schema (register.ts) is the whole safety boundary —
+ * this isn't a client-side check being skipped, there's nothing to check.
+ * WRITE, destructive-annotated — see register.ts.
+ */
+export async function updatePlannerNote(
+  client: CanvasClient,
+  args: { noteId: number | string; courseId?: number | string } & PlannerNoteFields,
+) {
+  if (args.courseId != null) await assertOwnCourse(client, args.courseId);
+  return client.put(`/planner_notes/${args.noteId}`, {
+    title: args.title,
+    details: args.details,
+    todo_date: args.todoDate,
+    ...(args.courseId != null ? { course_id: args.courseId } : {}),
+  });
+}
+
 /** The current user's recent activity stream (announcements, messages, etc.). */
 export function getActivityStream(client: CanvasClient) {
   return client.getPaginated("/users/self/activity_stream", {});
@@ -291,11 +381,21 @@ export function getSubmissionFeedback(
  * Assignment groups with their weights and your submissions — lets you see the
  * weighted breakdown behind a course grade. Note: Canvas returns drop rules
  * (drop_lowest/highest) but does NOT pre-apply them; interpret client-side.
+ * Each group's nested `assignments` are the same full shape `listAssignments`
+ * returns (potentially every assignment in the course, duplicated across
+ * groups) — trim them the same way.
  */
-export function getAssignmentGroups(client: CanvasClient, args: CourseArg) {
-  return client.getPaginated(`/courses/${args.courseId}/assignment_groups`, {
-    include: ["assignments", "submission"],
-  });
+export async function getAssignmentGroups(client: CanvasClient, args: CourseArg) {
+  const groups = (await client.getPaginated(
+    `/courses/${args.courseId}/assignment_groups`,
+    { include: ["assignments", "submission"] },
+  )) as Array<Record<string, unknown>>;
+  return groups.map((g) => ({
+    ...g,
+    ...(Array.isArray(g.assignments)
+      ? { assignments: g.assignments.map(trimAssignmentBloat) }
+      : {}),
+  }));
 }
 
 /** Announcements for a course (students only ever see active ones). */
@@ -324,7 +424,10 @@ export async function getSyllabus(client: CanvasClient, args: CourseArg) {
 /**
  * List files in a course (locked/hidden folders are silently excluded).
  * Some courses restrict file listing to instructors — degrade to a note on
- * 403 instead of throwing, matching listCourseRubrics/getLatePolicy.
+ * 403 instead of throwing, matching listCourseRubrics/getLatePolicy. Anchored
+ * on the specific "Forbidden" throw (see PERMISSION_DENIED) rather than a
+ * blanket 403 match, so a rate-limit throw (which also contains "403") can't
+ * be mistaken for "this course restricts files."
  */
 export function listCourseFiles(
   client: CanvasClient,
@@ -335,7 +438,7 @@ export function listCourseFiles(
       client.getPaginated(`/courses/${args.courseId}/files`, {
         search_term: args.searchTerm,
       }),
-    /\b403\b/,
+    PERMISSION_DENIED,
     {
       available: false,
       note: "This course restricts file listing to instructors.",
@@ -545,6 +648,26 @@ function calendarEventPayload(fields: CalendarEventFields) {
 }
 
 /**
+ * Confirm `courseId` refers to a course the current token's owner is actually
+ * enrolled in. Shared between `assertOwnContext`'s course branch and the
+ * `planner_notes` write tools (which take a plain numeric `course_id`, not a
+ * `contextCode` string, so they reuse this membership check directly rather
+ * than going through the full contextCode parsing).
+ */
+async function assertOwnCourse(
+  client: CanvasClient,
+  courseId: number | string,
+): Promise<void> {
+  const id = Number(courseId);
+  const courses = (await listCourses(client, {
+    includeConcluded: true,
+  })) as Array<{ id: number }>;
+  if (!courses.some((c) => c.id === id)) {
+    throw new Error(`courseId ${id} is not one of your enrolled courses.`);
+  }
+}
+
+/**
  * Confirm a `contextCode` (e.g. `course_123`, `group_45`, `user_67`) refers to
  * a course/group/user the current token's owner actually belongs to, before
  * letting a write proceed. `contextCode` is the first non-numeric,
@@ -575,19 +698,55 @@ async function assertOwnContext(
     return;
   }
   if (kind === "course") {
-    const courses = (await listCourses(client, {
-      includeConcluded: true,
-    })) as Array<{ id: number }>;
-    if (!courses.some((c) => c.id === id)) {
-      throw new Error(
-        `contextCode course_${id} is not one of your enrolled courses.`,
-      );
+    try {
+      await assertOwnCourse(client, id);
+    } catch {
+      throw new Error(`contextCode course_${id} is not one of your enrolled courses.`);
     }
     return;
   }
   const groups = (await listMyGroups(client)) as Array<{ id: number }>;
   if (!groups.some((g) => g.id === id)) {
     throw new Error(`contextCode group_${id} is not one of your groups.`);
+  }
+}
+
+/**
+ * Canvas's permission-denied throw is `"Canvas API 403 Forbidden for ..."`
+ * (canvas-client.ts) — anchored at the start so it can never collide with
+ * the rate-limit throw, which also contains the literal substring "403"
+ * (`"Canvas API rate limit hit (403). ..."`). A blanket `/\b403\b/` match
+ * would misfire on a throttled request and blame permissions instead.
+ */
+const PERMISSION_DENIED = /^Canvas API 403 Forbidden/;
+
+/**
+ * A student enrollment (what `assertOwnContext` checks) does not imply
+ * `manage_calendar` — Canvas 403s a course/group-context calendar write
+ * regardless of membership unless the caller actually holds that permission.
+ * Rethrow with an actionable hint instead of a bare 403, but only for the
+ * failure shape this is actually about (a course/group context + a genuine
+ * permission denial) — never touch other errors.
+ */
+async function withCalendarPermissionHint<T>(
+  contextCode: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const isCourseOrGroup = /^(course|group)_/.test(contextCode ?? "");
+    const msg = (e as Error).message ?? "";
+    if (isCourseOrGroup && PERMISSION_DENIED.test(msg)) {
+      throw new Error(
+        `${msg} — students typically lack calendar-write permission on a ` +
+          "course/group context (or the course has concluded); try " +
+          "contextCode: user_<your own id> to write to your personal " +
+          "calendar instead.",
+        { cause: e },
+      );
+    }
+    throw e;
   }
 }
 
@@ -601,12 +760,14 @@ export async function createCalendarEvent(
   args: { contextCode: string } & CalendarEventFields,
 ) {
   await assertOwnContext(client, args.contextCode);
-  return client.post("/calendar_events", {
-    calendar_event: {
-      context_code: args.contextCode,
-      ...calendarEventPayload(args),
-    },
-  });
+  return withCalendarPermissionHint(args.contextCode, () =>
+    client.post("/calendar_events", {
+      calendar_event: {
+        context_code: args.contextCode,
+        ...calendarEventPayload(args),
+      },
+    }),
+  );
 }
 
 /**
@@ -619,12 +780,14 @@ export async function updateCalendarEvent(
   args: { eventId: number | string; contextCode?: string } & CalendarEventFields,
 ) {
   if (args.contextCode) await assertOwnContext(client, args.contextCode);
-  return client.put(`/calendar_events/${args.eventId}`, {
-    calendar_event: {
-      ...(args.contextCode ? { context_code: args.contextCode } : {}),
-      ...calendarEventPayload(args),
-    },
-  });
+  return withCalendarPermissionHint(args.contextCode, () =>
+    client.put(`/calendar_events/${args.eventId}`, {
+      calendar_event: {
+        ...(args.contextCode ? { context_code: args.contextCode } : {}),
+        ...calendarEventPayload(args),
+      },
+    }),
+  );
 }
 
 /**

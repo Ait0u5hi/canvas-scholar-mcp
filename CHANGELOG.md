@@ -3,10 +3,46 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
-## [1.1.0] - 2026-09-13
+## [1.2.0] - 2026-09-13
 
-First deliberate write capability: two confirmation-gated calendar tools, plus
-group-scoped discussion reads and a handful of correctness fixes.
+A live-verified field report caught a real gap in 1.1.0's own bloat fix, plus a genuine
+new capability (planner to-do writes) and a content-fencing gap.
+
+### Added
+
+- `canvas_create_planner_note` / `canvas_update_planner_note` — **WRITE**,
+  `destructiveHint: true`. Writes a personal "My To-Do" item
+  (`/planner_notes`), optionally tagged under a course — students can tag
+  any course they belong to here, unlike a calendar event, which needs
+  `manage_calendar` permission Canvas rarely grants students on a course
+  context.
+
+### Fixed
+
+- `canvas_list_assignments`'s 1.1.0 bloat fix was incomplete: it stripped
+  `secure_params` but never touched an attached `rubric`'s full
+  criteria/ratings tree, which some courses restrict from the dedicated
+  rubric endpoints entirely — making the embedded copy the *only*
+  student-readable rubric. Now truncated (not dropped) so the capability
+  survives. The same trim now also applies to `canvas_list_new_quizzes` and
+  `canvas_get_assignment_groups`, which hit the identical untrimmed shape and
+  were missed in 1.1.0.
+- Calendar tools (list/get/create/update) and `canvas_get_submission_feedback`
+  /`canvas_get_planner_items`/`canvas_get_todo` now fence their responses
+  against prompt injection like every other tool carrying Canvas-authored
+  free text — live data confirmed a real calendar event `description` field
+  carrying injected `<link>`/`<script>` tags (almost certainly Canvas/
+  institution-side branding, not malicious, but the same class of content
+  the fencing exists for).
+- A course-context calendar write that 403s for lacking `manage_calendar`
+  permission now gets an actionable hint pointing at `contextCode:
+  user_<your id>`, instead of a bare 403 discovered by trial and error.
+- Fixed a false-positive risk in that same permission-check logic (and in
+  `canvas_list_course_files`'s existing 403 degrade): both used to match any
+  error message containing the substring "403", which also matches Canvas's
+  rate-limit message (`"Canvas API rate limit hit (403)..."`) — now anchored
+  to the specific `"Canvas API 403 Forbidden"` throw so a throttled request
+  can't be mistaken for a permissions issue.
 
 ### Added
 
