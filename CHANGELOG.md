@@ -3,6 +3,25 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [1.2.2] - 2026-09-13
+
+A live-verified follow-up report found the 1.2.0 assignment-bloat fix was aimed at
+the wrong field for graded-discussion assignments — real numbers from an actual
+course pinpointed the true driver.
+
+### Fixed
+
+- `canvas_list_assignments`/`canvas_list_new_quizzes`/`canvas_get_assignment_groups`:
+  a graded-discussion assignment embeds the ENTIRE discussion inline —
+  `discussion_topic.message` (the prompt) and every reply in
+  `submission.discussion_entries` — which the 1.2.0 fix (secure_params/rubric)
+  didn't touch. Live-measured: one such assignment was 26,839 characters, with
+  12,830 in `discussion_entries` and 5,785 in `discussion_topic.message` alone.
+  `discussion_topic.message` is now truncated like `description`;
+  `discussion_entries` is dropped outright with a count note, since that content
+  is always reachable via `canvas_list_discussions`/`canvas_get_discussion_view`
+  without needing to ride along on every assignment fetch.
+
 ## [1.2.1] - 2026-09-13
 
 Retrospective-driven infra/correctness pass: a session cross-model review flagged

@@ -37,11 +37,16 @@ export function listCourses(
  * Trims per-assignment bloat that has nothing to do with the tool's purpose:
  * Canvas always includes `secure_params` (an LTI-launch JWT — irrelevant to a
  * read tool) on every assignment, rich-text `description` HTML can be large,
- * and an attached `rubric`'s full criteria/ratings tree can be large too. A
- * course-scoped list is naturally bounded by how many assignments the course
- * has, so — unlike listConferences' cross-course, unbounded history — a
- * ROW-count cap here would risk silently hiding a real assignment; trimming
- * per-row bloat is the safe lever, not truncating the list itself.
+ * an attached `rubric`'s full criteria/ratings tree can be large too, and a
+ * graded-discussion assignment embeds the ENTIRE discussion inline
+ * (`discussion_topic.message` + every reply in `submission.discussion_entries`
+ * — see `trimAssignmentBloat`, this was the actual dominant bloat source in
+ * a live-reported case, well past what the rubric/secure_params trim alone
+ * addressed). A course-scoped list is naturally bounded by how many
+ * assignments the course has, so — unlike listConferences' cross-course,
+ * unbounded history — a ROW-count cap here would risk silently hiding a real
+ * assignment; trimming per-row bloat is the safe lever, not truncating the
+ * list itself.
  */
 export async function listAssignments(
   client: CanvasClient,
@@ -62,6 +67,20 @@ export async function listAssignments(
  * copy embedded on the assignment the *only* student-readable rubric. Only
  * `secure_params` (an LTI-launch JWT, never useful to a read tool, and never
  * the only copy of anything) is safe to drop outright.
+ *
+ * Graded-discussion assignments are a real, separately-confirmed case the
+ * first pass at this missed entirely: Canvas embeds the FULL discussion
+ * inline on the assignment object — `discussion_topic.message` (the prompt)
+ * and `submission.discussion_entries` (every reply), not just a pointer to
+ * it. [measured live, 2026-09-13] one such assignment alone was 26,839
+ * characters, with 12,830 in `submission.discussion_entries` and 5,785 in
+ * `discussion_topic.message` — dwarfing what the rubric/secure_params trim
+ * addressed. Unlike rubrics, this content has no restricted-access case
+ * analogous to `RUBRIC_DENIED` — it's always reachable via
+ * `canvas_list_discussions`/`canvas_get_discussion_view` without needing to
+ * ride along on every assignment fetch, so `discussion_entries` is dropped
+ * outright (with a count so the caller knows to go look), while
+ * `discussion_topic.message` is truncated like `description`.
  */
 function trimAssignmentBloat(a: Record<string, unknown>): Record<string, unknown> {
   const trimmed: Record<string, unknown> = { ...a };
@@ -71,6 +90,24 @@ function trimAssignmentBloat(a: Record<string, unknown>): Record<string, unknown
   }
   if (Array.isArray(trimmed.rubric)) {
     trimmed.rubric = trimmed.rubric.map(truncateRubricCriterion);
+  }
+  if (trimmed.discussion_topic && typeof trimmed.discussion_topic === "object") {
+    const dt = trimmed.discussion_topic as Record<string, unknown>;
+    trimmed.discussion_topic =
+      typeof dt.message === "string"
+        ? { ...dt, message: summarizeHtml(dt.message, 500) }
+        : dt;
+  }
+  if (trimmed.submission && typeof trimmed.submission === "object") {
+    const sub = { ...(trimmed.submission as Record<string, unknown>) };
+    if (Array.isArray(sub.discussion_entries) && sub.discussion_entries.length > 0) {
+      const count = sub.discussion_entries.length;
+      delete sub.discussion_entries;
+      sub.discussion_entries_note =
+        `${count} discussion repl${count === 1 ? "y" : "ies"} omitted — use ` +
+        "canvas_get_discussion_view for the full thread.";
+      trimmed.submission = sub;
+    }
   }
   return trimmed;
 }

@@ -121,6 +121,95 @@ describe("listAssignments stays within a measured size budget on a large course"
   });
 });
 
+/**
+ * GRADED-DISCUSSION REGRESSION GUARD — a real live-reported case (2026-09-13,
+ * course 574244) found the first trim pass missed this entirely: Canvas
+ * embeds the FULL discussion inline on a graded-discussion assignment
+ * (discussion_topic.message + every reply in submission.discussion_entries),
+ * not just a pointer — one such assignment alone was 26,839 characters, most
+ * of it in these two fields, dwarfing what the rubric/secure_params trim
+ * addressed. That data is always reachable via
+ * canvas_list_discussions/canvas_get_discussion_view without restriction
+ * (no RUBRIC_DENIED-style caveat applies here), so discussion_entries is
+ * dropped outright rather than truncated.
+ */
+describe("graded-discussion assignments no longer embed the full thread", () => {
+  function gradedDiscussionAssignment() {
+    return {
+      id: 6638746,
+      name: "Discussion: Module #2 Q&A",
+      discussion_topic: {
+        id: 1,
+        title: "Module #2 Q&A",
+        message: `<p>${"p".repeat(3000)}</p>`,
+      },
+      submission: {
+        workflow_state: "graded",
+        discussion_entries: Array.from({ length: 20 }, (_, i) => ({
+          id: i,
+          message: `<p>${"r".repeat(400)}</p>`,
+        })),
+      },
+    };
+  }
+
+  it("truncates discussion_topic.message instead of leaving it full-length", async () => {
+    const c = mockClient({
+      getPaginated: vi.fn().mockResolvedValue([gradedDiscussionAssignment()]),
+    });
+    const res = (await canvas.listAssignments(c, { courseId: 1 })) as Array<{
+      discussion_topic?: { message?: string };
+    }>;
+    const message = res[0].discussion_topic!.message!;
+    expect(message.length).toBeLessThan(600);
+    expect(message.endsWith("… [truncated]")).toBe(true);
+  });
+
+  it("drops submission.discussion_entries entirely, replacing it with a count note", async () => {
+    const c = mockClient({
+      getPaginated: vi.fn().mockResolvedValue([gradedDiscussionAssignment()]),
+    });
+    const res = (await canvas.listAssignments(c, { courseId: 1 })) as Array<{
+      submission?: { discussion_entries?: unknown; discussion_entries_note?: string };
+    }>;
+    expect(res[0].submission!.discussion_entries).toBeUndefined();
+    expect(res[0].submission!.discussion_entries_note).toMatch(/20 discussion replies omitted/);
+  });
+
+  it("cuts a realistic graded-discussion assignment down by an order of magnitude", async () => {
+    const raw = gradedDiscussionAssignment();
+    const c = mockClient({ getPaginated: vi.fn().mockResolvedValue([raw]) });
+    const res = await canvas.listAssignments(c, { courseId: 1 });
+
+    const rawSize = JSON.stringify(raw).length;
+    const trimmedSize = JSON.stringify(res[0]).length;
+    expect(rawSize).toBeGreaterThan(10_000); // sanity: the fixture is genuinely bloated
+    expect(trimmedSize).toBeLessThan(rawSize / 5);
+  });
+
+  it("leaves submission alone entirely when there are no discussion_entries", async () => {
+    const c = mockClient({
+      getPaginated: vi
+        .fn()
+        .mockResolvedValue([{ id: 1, submission: { workflow_state: "graded" } }]),
+    });
+    const res = (await canvas.listAssignments(c, { courseId: 1 })) as Array<{
+      submission?: Record<string, unknown>;
+    }>;
+    expect(res[0].submission).toEqual({ workflow_state: "graded" });
+  });
+
+  it("leaves an assignment with no discussion_topic alone", async () => {
+    const c = mockClient({
+      getPaginated: vi.fn().mockResolvedValue([{ id: 1, name: "Regular HW" }]),
+    });
+    const res = (await canvas.listAssignments(c, { courseId: 1 })) as Array<
+      Record<string, unknown>
+    >;
+    expect(res[0]).toEqual({ id: 1, name: "Regular HW" });
+  });
+});
+
 describe("discussion topic lists truncate the message body", () => {
   it("listDiscussions truncates a long topic message", async () => {
     const longHtml = `<p>${"y".repeat(2000)}</p>`;
