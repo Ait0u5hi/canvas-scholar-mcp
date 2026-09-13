@@ -8,14 +8,21 @@ import * as canvas from "./canvas-tools.js";
  * Wire the Canvas operations up as MCP tools.
  *
  * Almost every tool here is read-only and non-destructive, via the `ro()`
- * helper. Two exceptions — `canvas_create_calendar_event` and
- * `canvas_update_calendar_event` — are deliberate writes and are annotated
- * `readOnlyHint: false, destructiveHint: true` instead, so a client prompts
- * for confirmation before calling them.
+ * helper. The write tools (calendar events, planner notes — see the `write()`
+ * helper below) are annotated `readOnlyHint: false, destructiveHint: true`
+ * instead, so a client prompts for confirmation before calling them.
  *
  * Hints live under an `annotations` object (that is where the MCP SDK reads
  * them from); putting them at the top level silently drops them and the
  * client falls back to the pessimistic assumed-destructive posture.
+ *
+ * Fencing rule: any tool whose response can carry Canvas-user-authored free
+ * text (descriptions, messages, comments, titles — anything a student or
+ * instructor typed, not just structural/numeric fields) is wrapped with
+ * `okUntrusted(...)`, not `ok(...)`, regardless of whether the tool reads or
+ * writes. This is a stated invariant rather than an enumerated list because
+ * the list already went stale once (this comment used to name exactly two
+ * write tools; there are now six).
  */
 export function registerTools(server: McpServer, client: CanvasClient): void {
   // Wrap a result as MCP text, appending an occasional low-budget notice.
@@ -143,7 +150,8 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
         "professor say / how was I graded?'.",
       inputSchema: { courseId, assignmentId: id },
     },
-    async (args) => ok(await canvas.getSubmissionFeedback(client, args)),
+    async (args) =>
+      okUntrusted(await canvas.getSubmissionFeedback(client, args), "submission feedback"),
   );
 
   server.registerTool(
@@ -221,7 +229,51 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
         endDate: z.string().optional().describe("ISO date, e.g. 2026-09-07"),
       },
     },
-    async (args) => ok(await canvas.getPlannerItems(client, args)),
+    async (args) => okUntrusted(await canvas.getPlannerItems(client, args), "planner items"),
+  );
+
+  const plannerNoteFields = {
+    title: z.string().optional().describe("To-do title"),
+    details: z.string().optional().describe("To-do details/notes"),
+  };
+
+  server.registerTool(
+    "canvas_create_planner_note",
+    {
+      ...write("Create a planner to-do item"),
+      description:
+        "Create a personal 'My To-Do' item, optionally tagged under a " +
+        "course (courseId) so it shows up color-coded there. Unlike a " +
+        "calendar event, students can tag a course without needing any " +
+        "special permission. WRITE — modifies your real Canvas to-do list; " +
+        "requires confirmation.",
+      inputSchema: {
+        courseId: courseId.optional().describe("Tag this to-do under a course (optional)"),
+        todoDate: z.string().describe("ISO 8601 date the to-do is due/shown"),
+        ...plannerNoteFields,
+      },
+    },
+    async (args) =>
+      okUntrusted(await canvas.createPlannerNote(client, args), "planner note"),
+  );
+
+  server.registerTool(
+    "canvas_update_planner_note",
+    {
+      ...write("Update a planner to-do item"),
+      description:
+        "Update an existing planner to-do item — only the fields you pass " +
+        "are changed. WRITE — modifies your real Canvas to-do list; " +
+        "requires confirmation.",
+      inputSchema: {
+        noteId: id,
+        courseId: courseId.optional(),
+        todoDate: z.string().optional(),
+        ...plannerNoteFields,
+      },
+    },
+    async (args) =>
+      okUntrusted(await canvas.updatePlannerNote(client, args), "planner note"),
   );
 
   server.registerTool(
@@ -246,7 +298,7 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
         "'what needs action'.",
       inputSchema: {},
     },
-    async () => ok(await canvas.getMyTodo(client)),
+    async () => okUntrusted(await canvas.getMyTodo(client), "to-do list"),
   );
 
   /* -------------------- calendar -------------------- */
@@ -272,7 +324,7 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
         courseIds: z.array(id).optional().describe("Limit to these course ids"),
       },
     },
-    async (args) => ok(await canvas.listCalendarEvents(client, args)),
+    async (args) => okUntrusted(await canvas.listCalendarEvents(client, args), "calendar event"),
   );
 
   server.registerTool(
@@ -301,7 +353,7 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       description: "Get one calendar event or assignment-date by id.",
       inputSchema: { eventId: id },
     },
-    async (args) => ok(await canvas.getCalendarEvent(client, args)),
+    async (args) => okUntrusted(await canvas.getCalendarEvent(client, args), "calendar event"),
   );
 
   const calendarEventFields = {
@@ -317,12 +369,16 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
     {
       ...write("Create a calendar event"),
       description:
-        "Create a calendar event on one of your own courses/groups, or your " +
-        "personal calendar (contextCode user_<your id>). WRITE — modifies " +
-        "your real Canvas calendar; requires confirmation.",
+        "Create a calendar event on your personal calendar (contextCode " +
+        "user_<your id>) or, permissions allowing, one of your own " +
+        "courses/groups. NOTE: students typically lack calendar-write " +
+        "permission on a course/group context and will get a 403 — use " +
+        "user_<your id> unless you know you have that permission. WRITE — " +
+        "modifies your real Canvas calendar; requires confirmation.",
       inputSchema: { contextCode, ...calendarEventFields },
     },
-    async (args) => ok(await canvas.createCalendarEvent(client, args)),
+    async (args) =>
+      okUntrusted(await canvas.createCalendarEvent(client, args), "calendar event"),
   );
 
   server.registerTool(
@@ -331,15 +387,17 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
       ...write("Update a calendar event"),
       description:
         "Update an existing calendar event — only the fields you pass are " +
-        "changed. WRITE — modifies your real Canvas calendar; requires " +
-        "confirmation.",
+        "changed. Same course/group permission caveat as " +
+        "canvas_create_calendar_event applies if you pass a new contextCode. " +
+        "WRITE — modifies your real Canvas calendar; requires confirmation.",
       inputSchema: {
         eventId: id,
         contextCode: contextCode.optional(),
         ...calendarEventFields,
       },
     },
-    async (args) => ok(await canvas.updateCalendarEvent(client, args)),
+    async (args) =>
+      okUntrusted(await canvas.updateCalendarEvent(client, args), "calendar event"),
   );
 
   /* -------------------- discussions / announcements -------------------- */

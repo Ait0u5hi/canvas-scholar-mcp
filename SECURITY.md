@@ -11,12 +11,17 @@ records.
   endpoint (`/courses/:id/enrollments`) is always scoped with `user_id: "self"`,
   and a regression test (`tests/privacy.test.ts`) fails the build if that scope
   is ever removed.
-- **Two tools write to Canvas**: `canvas_create_calendar_event` and
-  `canvas_update_calendar_event` (calendar only — nothing else is writable).
-  Both are annotated `destructiveHint: true` so a compliant MCP client asks for
-  confirmation before calling them, and both re-check their target
-  (`contextCode`) against your own courses/groups/user id before writing —
-  see `tests/writes.test.ts`. Every other tool remains read-only.
+- **Four tools write to Canvas**: `canvas_create_calendar_event` /
+  `canvas_update_calendar_event` (calendar events) and `canvas_create_planner_note`
+  / `canvas_update_planner_note` (personal to-do items) — nothing else is
+  writable. All four are annotated `destructiveHint: true` so a compliant MCP
+  client asks for confirmation before calling them. The calendar tools
+  re-check their target (`contextCode`) against your own courses/groups/user
+  id before writing (`tests/writes.test.ts`); the planner tools re-check a
+  passed `courseId` the same way (`tests/planner-and-permission-fixes.test.ts`)
+  — `/planner_notes/:id` itself is scoped to your own user by Canvas
+  server-side, so there's no separate ownership check needed for the note id.
+  Every other tool remains read-only.
 - It **never logs** your token, request bodies, or personal data. Diagnostics go
   to stderr and contain only high-level status.
 
