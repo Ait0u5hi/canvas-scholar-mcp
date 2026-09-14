@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versioning is [SemVer](https://semver.org/).
 
+## [1.3.0] - 2026-09-14
+
+### Changed
+
+- `canvas_get_file` now returns full content — not just small text snippets —
+  for any file under ~10MB, as an embedded-resource content block (decoded
+  text for text-like files, base64 blob for binary files such as PDFs,
+  images, and Office docs). The old 50,000-byte text-only threshold is gone;
+  the 10MB threshold now applies uniformly to all content types. Files at or
+  above 10MB remain metadata-only with the signed download `url`, unchanged.
+  The signed-URL fetch still never reuses the authenticated Canvas API
+  client, so the bearer token is never sent to the CDN host serving the file.
+
 ## [1.2.2] - 2026-09-13
 
 A live-verified follow-up report found the 1.2.0 assignment-bloat fix was aimed at
