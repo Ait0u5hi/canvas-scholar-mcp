@@ -555,14 +555,53 @@ export function registerTools(server: McpServer, client: CanvasClient): void {
     {
       ...ro("Get a file"),
       description:
-        "File metadata by id, plus a `content` field with the decoded text " +
-        "when the file is small and text-like (useful when you can't reach " +
-        "the Canvas instance directly to follow the download link). Falls " +
-        "back to metadata-only (with a ready-to-use `url` download link) for " +
-        "large or binary files.",
+        "File metadata by id. For files under ~10MB, also returns the " +
+        "content inline: decoded text for text-like files, or a " +
+        "base64-encoded blob for binary files (PDF, images, Office docs, " +
+        "etc.) as an embedded resource. Files at or above ~10MB are " +
+        "returned as metadata only, with a ready-to-use signed `url` " +
+        "download link, since they are not fetched or buffered " +
+        "server-side.",
       inputSchema: { fileId: id },
     },
-    async (args) => okUntrusted(await canvas.getFile(client, args), "file content"),
+    async (args) => {
+      const { meta, inlineText, blob } = await canvas.getFile(client, args);
+      const content: Array<
+        | { type: "text"; text: string }
+        | {
+            type: "resource";
+            resource: { uri: string; mimeType?: string; text: string };
+          }
+        | {
+            type: "resource";
+            resource: { uri: string; mimeType?: string; blob: string };
+          }
+      > = [
+        {
+          type: "text",
+          text: fenceUntrusted(JSON.stringify(meta, null, 2), "file metadata"),
+        },
+      ];
+      if (inlineText != null) {
+        content.push({
+          type: "resource",
+          resource: {
+            uri: meta.url ?? `canvas-file:${args.fileId}`,
+            mimeType: meta["content-type"],
+            text: fenceUntrusted(inlineText, "file content"),
+          },
+        });
+      }
+      if (blob != null) {
+        content.push({
+          type: "resource",
+          resource: { uri: blob.uri, mimeType: blob.mimeType, blob: blob.base64 },
+        });
+      }
+      const notice = client.consumeUsageNotice();
+      if (notice) content.push({ type: "text", text: notice });
+      return { content };
+    },
   );
 
   server.registerTool(

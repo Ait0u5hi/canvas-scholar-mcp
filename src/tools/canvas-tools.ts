@@ -483,11 +483,18 @@ export function listCourseFiles(
   );
 }
 
+export type GetFileResult = {
+  meta: { url?: string; size?: number; "content-type"?: string };
+  inlineText?: string;
+  blob?: { base64: string; mimeType: string; uri: string };
+};
+
 /**
- * File metadata, plus a `content` field with the decoded text when the file
- * is small and text-like — a real win on a network that can't reach the
- * Canvas instance directly to follow the metadata `url` itself. Falls back to
- * metadata-only (the original behavior) for large or binary files.
+ * File metadata, plus the actual content when the file is under
+ * `FILE_BLOB_MAX_BYTES` — decoded text for text-like files, a base64 blob for
+ * everything else (PDFs, images, Office docs, etc.). Falls back to
+ * metadata-only (the original behavior) for files at or above that
+ * threshold, since they're not fetched or buffered server-side at all.
  *
  * The content fetch deliberately does NOT go through `CanvasClient` — the
  * metadata `url` is already a signed, pre-authorized link (and typically
@@ -500,7 +507,7 @@ export function listCourseFiles(
 export async function getFile(
   client: CanvasClient,
   args: { fileId: number | string },
-) {
+): Promise<GetFileResult> {
   const meta = (await client.get(`/files/${args.fileId}`)) as {
     url?: string;
     size?: number;
@@ -508,32 +515,44 @@ export async function getFile(
   };
   const contentType = String(meta["content-type"] ?? "");
   const size = Number(meta.size);
+  if (!meta.url || !Number.isFinite(size) || size > FILE_BLOB_MAX_BYTES) {
+    return { meta };
+  }
+  const bytes = await fetchFileBytes(meta.url, FILE_BLOB_MAX_BYTES);
+  if (bytes == null) return { meta };
+
   const looksTexty = /^(text\/|application\/(json|xml|javascript))/i.test(
     contentType,
   );
-  if (!meta.url || !looksTexty || !Number.isFinite(size) || size > FILE_CONTENT_MAX_BYTES) {
-    return meta;
+  if (looksTexty) {
+    const text = bytes.toString("utf-8");
+    return { meta, inlineText: truncateText(text, FILE_CONTENT_MAX_CHARS) };
   }
-  const content = await fetchSmallTextFile(meta.url, FILE_CONTENT_MAX_BYTES);
-  if (content == null) return meta;
-  return { ...meta, content: truncateText(content, FILE_CONTENT_MAX_CHARS) };
+  return {
+    meta,
+    blob: {
+      base64: bytes.toString("base64"),
+      mimeType: contentType || "application/octet-stream",
+      uri: meta.url,
+    },
+  };
 }
 
-const FILE_CONTENT_MAX_BYTES = 50_000;
+const FILE_BLOB_MAX_BYTES = 10 * 1024 * 1024;
 const FILE_CONTENT_MAX_CHARS = 20_000;
 
 /**
- * Fetch a small text file from an already-signed Canvas file URL. No
+ * Fetch a Canvas file's bytes from an already-signed file URL. No
  * Authorization header is ever attached — the URL's own signature is the
  * auth, and this must never forward the Canvas bearer token to whatever host
  * the signed link redirects to. Enforces `maxBytes` as a true streaming cap
  * (not just a `Content-Length` check), so a stale/absent size can't let a
  * huge body be fully buffered before being rejected.
  */
-async function fetchSmallTextFile(
+async function fetchFileBytes(
   url: string,
   maxBytes: number,
-): Promise<string | null> {
+): Promise<Buffer | null> {
   const res = await fetch(url);
   if (!res.ok || !res.body) return null;
   const contentLength = Number(res.headers.get("content-length"));
@@ -552,7 +571,7 @@ async function fetchSmallTextFile(
     }
     chunks.push(value);
   }
-  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf-8");
+  return Buffer.concat(chunks.map((c) => Buffer.from(c)));
 }
 
 /** Cap text length so a fetched file doesn't blow the response budget. */

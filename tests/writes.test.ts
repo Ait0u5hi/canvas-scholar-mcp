@@ -148,34 +148,56 @@ describe("getFile — safe content fetch", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns metadata only for a large file (no fetch attempted)", async () => {
+  it("returns metadata only for a file at/above the 10MB threshold (no fetch attempted)", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     const c = mockClient({
       get: vi.fn().mockResolvedValue({
         url: "https://cdn.example/f",
-        size: 10_000_000,
+        size: 11 * 1024 * 1024,
         "content-type": "text/plain",
       }),
     });
-    const res = (await canvas.getFile(c, { fileId: 1 })) as { content?: string };
-    expect(res.content).toBeUndefined();
+    const res = await canvas.getFile(c, { fileId: 1 });
+    expect(res.inlineText).toBeUndefined();
+    expect(res.blob).toBeUndefined();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("returns metadata only for a binary file (no fetch attempted)", async () => {
-    const fetchSpy = vi.fn();
+  it("returns a base64 blob for a small binary file", async () => {
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // "%PDF"
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ "content-length": String(bytes.length) }),
+      body: {
+        getReader: () => {
+          let done = false;
+          return {
+            read: async () => {
+              if (done) return { done: true, value: undefined };
+              done = true;
+              return { done: false, value: bytes };
+            },
+          };
+        },
+      },
+    });
     vi.stubGlobal("fetch", fetchSpy);
     const c = mockClient({
       get: vi.fn().mockResolvedValue({
         url: "https://cdn.example/f",
-        size: 100,
+        size: bytes.length,
         "content-type": "application/pdf",
       }),
     });
-    const res = (await canvas.getFile(c, { fileId: 1 })) as { content?: string };
-    expect(res.content).toBeUndefined();
-    expect(fetchSpy).not.toHaveBeenCalled();
+    const res = await canvas.getFile(c, { fileId: 1 });
+    expect(res.inlineText).toBeUndefined();
+    expect(res.blob?.base64).toBe(Buffer.from(bytes).toString("base64"));
+    expect(res.blob?.mimeType).toBe("application/pdf");
+    // Same auth invariant as the text path — no header attached to the signed URL fetch.
+    expect(fetchSpy).toHaveBeenCalledWith("https://cdn.example/f");
+    const callArgs = fetchSpy.mock.calls[0];
+    expect(callArgs.length === 1 || callArgs[1]?.headers == null).toBe(true);
   });
 
   it("fetches small text content WITHOUT attaching any auth header", async () => {
@@ -204,8 +226,8 @@ describe("getFile — safe content fetch", () => {
         "content-type": "text/plain",
       }),
     });
-    const res = (await canvas.getFile(c, { fileId: 1 })) as { content?: string };
-    expect(res.content).toBe(body);
+    const res = await canvas.getFile(c, { fileId: 1 });
+    expect(res.inlineText).toBe(body);
     // The load-bearing assertion — the fetch to the signed CDN url must never
     // carry the Canvas bearer token (it isn't CanvasClient's fetch at all).
     expect(fetchSpy).toHaveBeenCalledWith("https://cdn.example/f");
@@ -214,7 +236,7 @@ describe("getFile — safe content fetch", () => {
   });
 
   it("aborts mid-stream if the real byte count exceeds the cap despite a small reported size", async () => {
-    const big = "x".repeat(60_000); // over the 50_000-byte cap
+    const big = "x".repeat(11 * 1024 * 1024); // over the 10MB cap
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
       headers: new Headers(), // no content-length — forces the streaming cap to do the work
@@ -240,7 +262,8 @@ describe("getFile — safe content fetch", () => {
         "content-type": "text/plain",
       }),
     });
-    const res = (await canvas.getFile(c, { fileId: 1 })) as { content?: string };
-    expect(res.content).toBeUndefined();
+    const res = await canvas.getFile(c, { fileId: 1 });
+    expect(res.inlineText).toBeUndefined();
+    expect(res.blob).toBeUndefined();
   });
 });
